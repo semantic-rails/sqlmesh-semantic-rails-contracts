@@ -1,0 +1,19 @@
+models:
+  customers:
+    relation: semantic_rails.customers
+    entities:
+      customer: {}
+    dimensions:
+      customer_name:
+        column: customer_name
+    measures: {}
+  orders:
+    relation: semantic_rails.orders
+    entities:
+      order: {}
+      customer:
+        expr:
+          kind: column
+          column: customer_id
+    dimensions: {}
+    measures: {}

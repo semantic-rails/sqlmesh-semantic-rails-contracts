@@ -1,0 +1,6 @@
+graph:
+  entities:
+    customer:
+      key: customer_id
+    order:
+      key: order_id

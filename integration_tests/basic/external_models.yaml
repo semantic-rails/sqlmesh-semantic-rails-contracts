@@ -1,0 +1,5 @@
+- name: raw.customers
+  columns:
+    customer_id: INT
+    customer_name: TEXT
+

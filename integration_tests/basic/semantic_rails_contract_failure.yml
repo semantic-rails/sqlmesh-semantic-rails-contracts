@@ -1,0 +1,15 @@
+semantic_rails_contracts:
+  packages:
+    - package_id: semantic_fixture
+      namespace: semantic_fixture
+      contract_version: 1
+      semantic_hash: sha256:fixture
+      accepted_semantic_hashes:
+        - sha256:fixture
+      policy:
+        severity: error
+      models:
+        - semantic_model_id: customers
+          sqlmesh_model: semantic_rails.customers
+          columns:
+            - name: definitely_missing_customer_column

@@ -1,0 +1,16 @@
+version: 1
+
+projects:
+  - name: warning_project
+    project_dir: ../basic
+    contract:
+      packages:
+        - package_id: semantic_fixture
+          policy:
+            severity: warn
+          models:
+            - semantic_model_id: customers
+              sqlmesh_model: semantic_rails.customers
+              columns:
+                - name: definitely_missing_customer_column
+

@@ -1,0 +1,23 @@
+version: 1
+
+defaults:
+  gateway: duckdb
+
+projects:
+  - name: customers_project
+    project_dir: ../basic
+    contract_file: semantic_rails_contract.yml
+
+  - name: orders_project
+    project_dir: ../basic
+    contract:
+      packages:
+        - package_id: semantic_fixture
+          semantic_hash: sha256:fixture
+          accepted_semantic_hashes:
+            - sha256:fixture
+          models:
+            - semantic_model_id: orders
+              sqlmesh_model: semantic_rails.orders
+              columns:
+                - name: order_id

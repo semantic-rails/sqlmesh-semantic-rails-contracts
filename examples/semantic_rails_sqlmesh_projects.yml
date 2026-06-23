@@ -1,0 +1,14 @@
+version: 1
+
+defaults:
+  project_dir: .
+
+projects:
+  - name: duckdb_local
+    gateway: duckdb
+    contract_file: semantic_rails_contract.yml
+
+  - name: snowflake_prod
+    project_dir: ../sqlmesh-snowflake
+    gateway: snowflake
+    contract_file: semantic_rails_contract.yml

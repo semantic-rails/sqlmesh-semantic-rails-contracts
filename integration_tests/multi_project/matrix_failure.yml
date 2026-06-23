@@ -1,0 +1,9 @@
+version: 1
+
+defaults:
+  gateway: duckdb
+
+projects:
+  - name: customers_project_failure
+    project_dir: ../basic
+    contract_file: semantic_rails_contract_failure.yml

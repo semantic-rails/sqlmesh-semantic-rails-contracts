@@ -1,0 +1,41 @@
+semantic_rails_contracts:
+  packages:
+    - package_id: semantic_fixture
+      namespace: semantic_fixture
+      contract_version: 1
+      semantic_hash: sha256:fixture
+      accepted_semantic_hashes:
+        - sha256:fixture
+      policy:
+        severity: error
+        type_check: compatible
+        allow_extra_columns: true
+        require_owner: true
+        require_audits: true
+      models:
+        - semantic_model_id: customers
+          sqlmesh_model: semantic_rails.customers
+          sqlmesh_kind: FULL
+          owner: analytics
+          tags: [semantic_rails, public]
+          audits: [not_null_customer_id]
+          columns:
+            - name: customer_id
+              data_type: integer
+              required_by: ["entity.customer"]
+            - name: customer_name
+              data_type: text
+              required_by: ["dimension.customer_name"]
+        - semantic_model_id: orders
+          sqlmesh_model: semantic_rails.orders
+          sqlmesh_kind: FULL
+          owner: analytics
+          tags: [semantic_rails]
+          audits: [not_null_customer_id]
+          columns:
+            - name: order_id
+              data_type: integer
+              required_by: ["entity.order"]
+            - name: customer_id
+              data_type: integer
+              required_by: ["entity.customer"]
