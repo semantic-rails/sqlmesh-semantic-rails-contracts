@@ -17,13 +17,20 @@ semantic-rails-sqlmesh-contracts check \
 
 ## Install
 
+From GitHub:
+
+```shell
+python -m pip install \
+  "sqlmesh-semantic-rails-contracts @ git+https://github.com/semantic-rails/sqlmesh-semantic-rails-contracts.git@v0.1.0"
+```
+
 Local development:
 
 ```shell
 python -m pip install -e .
 ```
 
-Future public install:
+After PyPI publication:
 
 ```shell
 python -m pip install sqlmesh-semantic-rails-contracts
