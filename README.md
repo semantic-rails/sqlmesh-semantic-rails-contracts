@@ -1,184 +1,147 @@
 # SQLMesh Semantic Rails Contracts
 
-`sqlmesh-semantic-rails-contracts` checks that SQLMesh project metadata still
-satisfies the model, column, owner, tag, audit, relation, and package-hash
-contracts exported from a Semantic Rails package.
-
-It is the SQLMesh counterpart to `dbt-semantic-rails-contracts`, but it is not a
-macro package. SQLMesh projects are Python-addressable, support gateways, and
-already have native plan/audit concepts, so this package ships as an installable
-Python CLI:
-
-```shell
-semantic-rails-sqlmesh-contracts check \
-  --project-dir . \
-  --contract-file semantic_rails_contract.yml
-```
+`sqlmesh-semantic-rails-contracts` validates that SQLMesh project metadata still
+satisfies the physical resource contract exported from a Semantic Rails
+project. It checks model identity, columns, types, owner, tags, audits, kind,
+gateway, and relation metadata without reimplementing the Semantic Rails
+parser.
 
 ## Install
-
-From GitHub:
-
-```shell
-python -m pip install \
-  "sqlmesh-semantic-rails-contracts @ git+https://github.com/semantic-rails/sqlmesh-semantic-rails-contracts.git@v0.1.0"
-```
-
-Local development:
-
-```shell
-python -m pip install -e .
-```
-
-After PyPI publication:
 
 ```shell
 python -m pip install sqlmesh-semantic-rails-contracts
 ```
 
-## Contract Shape
-
-The SQLMesh checker accepts the same top-level payload shape as the dbt package:
-see [CONTRACT_PAYLOAD_SPEC.md](CONTRACT_PAYLOAD_SPEC.md) for the cross-package
-schema and compatibility rules.
-
-```yaml
-semantic_rails_contracts:
-  packages:
-    - package_id: jaffle_shop
-      namespace: jaffle
-      contract_version: 1
-      semantic_hash: sha256:...
-      accepted_semantic_hashes:
-        - sha256:...
-      policy:
-        severity: error
-        type_check: compatible
-        allow_extra_columns: true
-        require_owner: true
-        require_audits: true
-      models:
-        - semantic_model_id: customers
-          sqlmesh_model: semantic_rails.customers
-          sqlmesh_kind: FULL
-          owner: analytics
-          tags: [semantic_rails, public]
-          audits: [not_null_customer_id]
-          columns:
-            - name: customer_id
-              data_type: integer
-              required_by: ["entity.customer"]
-            - name: customer_name
-              data_type: text
-              required_by: ["dimension.customer_name"]
-```
-
-Supported SQLMesh-specific fields:
-
-- `sqlmesh_model`: SQLMesh model name, preferably fully qualified
-- `sqlmesh_project`: expected SQLMesh model project metadata
-- `sqlmesh_gateway`: expected gateway when checking a gateway-specific project
-- `sqlmesh_kind`: expected SQLMesh model kind such as `FULL`, `VIEW`, or `SEED`
-- `sqlmesh_external` / `external`: expected boolean for SQLMesh external models
-- `owner`: expected SQLMesh owner metadata
-- `tags` / `sqlmesh_tags`: required SQLMesh tags
-- `audits` / `sqlmesh_audits`: required SQLMesh audits
-- `sqlmesh_catalog`, `sqlmesh_schema`, `sqlmesh_identifier`,
-  `sqlmesh_relation_name`: optional relation metadata checks
-
-The checker also accepts `dbt_model` as a compatibility fallback for model name,
-but SQLMesh projects should prefer `sqlmesh_model` in committed contracts.
-Short model names are allowed only when they resolve to one SQLMesh model. If
-two schemas both define `customers`, use a fully qualified name such as
-`semantic_rails.customers` to avoid `SQLMESH_MODEL_AMBIGUOUS`.
-
-For CI systems that want machine-readable output and an exit code, use:
+Contract generation also needs the engine-owned producer:
 
 ```shell
+python -m pip install "sqlmesh-semantic-rails-contracts[export]"  # Python 3.11+
+```
+
+## Generate and check
+
+```shell
+semantic-rails-sqlmesh-contracts export \
+  /path/to/semantic_rails_package \
+  --sqlmesh-model-prefix analytics. \
+  --owner analytics \
+  --output semantic_rails_contract.yml
+
 semantic-rails-sqlmesh-contracts check \
   --project-dir . \
-  --contract-file semantic_rails_contract.yml \
-  --json
+  --contract-file semantic_rails_contract.yml
 ```
 
-## Export From Semantic Rails YAML
+Use `--json` or the `report` command for the versioned
+`ValidationReportV1` envelope:
+
+```json
+{
+  "report_format_version": 1,
+  "validator": {
+    "name": "sqlmesh-semantic-rails-contracts",
+    "version": "0.2.0"
+  },
+  "input": {
+    "contract_format_version": 1,
+    "binding_kind": "sqlmesh",
+    "binding_version": 1,
+    "legacy": false
+  },
+  "ok": true,
+  "summary": {
+    "package_count": 1,
+    "resource_count": 2,
+    "error_count": 0,
+    "warning_count": 0,
+    "sqlmesh_model_count": 2
+  },
+  "issues": []
+}
+```
+
+## Contract ownership
+
+The `semantic-rails` engine is the only producer of semantic resource facts and
+the canonical semantic fingerprint. This package never parses or hashes raw
+Semantic Rails YAML. It adds the independently versioned SQLMesh binding and
+validates that binding against a loaded SQLMesh context.
+
+See [CONTRACT_PAYLOAD_SPEC.md](CONTRACT_PAYLOAD_SPEC.md) and the schemas under
+[`schemas/`](schemas/).
+
+Canonical schema IDs resolve under
+`https://semantic-rails.com/schemas/`. The wheel also carries the SQLMesh
+schemas plus byte-identical copies of the engine-owned semantic-contract and
+validation-report schemas under `sqlmesh_semantic_rails_contracts/schemas` for
+offline registry use:
+
+```python
+from sqlmesh_semantic_rails_contracts import SCHEMA_NAMES, load_schema
+
+schema_registry = {load_schema(name)["$id"]: load_schema(name) for name in SCHEMA_NAMES}
+```
+
+The v1 checker rejects:
+
+- unsupported `contract_format_version`
+- non-SQLMesh bindings
+- unsupported `binding_version`
+- duplicate packages or resources
+- semantic packages or resources without exactly one SQLMesh binding
+- binding packages or resources without exactly one semantic counterpart
+- binding attempts to redefine engine-owned semantic columns
+- schema-invalid or unknown fields in packages, resources, or columns
+
+Legacy `packages:` payloads are read during the 0.2 migration window and emit
+`LEGACY_CONTRACT_FORMAT` as a warning. New exports always use the split v1
+contract; legacy read support is eligible for removal only in the next adapter
+major.
+
+## SQLMesh binding fields
+
+Bindings may constrain:
+
+- `sqlmesh_model`, `sqlmesh_project`, and `sqlmesh_gateway`
+- `sqlmesh_kind` and `sqlmesh_external`
+- `owner`, `tags`, and `audits`
+- catalog, schema, identifier, and relation name
+- severity, type checking, and extra-column policy
+
+Short model names must resolve uniquely. Prefer fully qualified SQLMesh names.
+
+## Matrix mode
+
+Validate several projects or gateways:
 
 ```shell
-semantic-rails-sqlmesh-contracts export /path/to/semantic_rails_package \
-  --sqlmesh-model-prefix semantic_rails. \
-  --sqlmesh-kind FULL \
-  --owner analytics \
-  --tag semantic_rails \
-  --output semantic_rails_contract.yml
-```
-
-The exporter uses the same Semantic Rails YAML traversal and required-column
-extraction logic as the dbt package. The intent is for this core extraction
-logic to live in a small shared package that both public repos can depend on.
-
-## Matrix Mode
-
-SQLMesh supports gateways, so Semantic Rails can validate several connector
-contexts without pretending they belong to one physical project:
-
-```yaml
-version: 1
-
-defaults:
-  project_dir: .
-
-projects:
-  - name: duckdb_local
-    gateway: duckdb
-    contract_file: semantic_rails_contract.yml
-
-  - name: snowflake_prod
-    project_dir: ../sqlmesh-snowflake
-    gateway: snowflake
-    contract_file: semantic_rails_contract.yml
-```
-
-Run:
-
-```shell
-semantic-rails-sqlmesh-contracts matrix semantic_rails_sqlmesh_projects.yml \
+semantic-rails-sqlmesh-contracts matrix \
+  semantic_rails_sqlmesh_projects.yml \
   --output target/semantic_rails_sqlmesh_contract_matrix.json
 ```
 
-## Error Codes
+## Compatibility
 
-- `INVALID_CONTRACT`: missing or malformed contract payload
-- `INVALID_MODEL_CONTRACT`: malformed resource entry
-- `SEMANTIC_HASH_NOT_ACCEPTED`: Semantic Rails hash is outside the allowed set
-- `SQLMESH_MODEL_NOT_FOUND`: expected SQLMesh model is absent
-- `SQLMESH_MODEL_AMBIGUOUS`: model name matched multiple SQLMesh models
-- `SQLMESH_PROJECT_MISMATCH`: project metadata differs
-- `SQLMESH_GATEWAY_MISMATCH`: gateway metadata differs
-- `SQLMESH_KIND_MISMATCH`: model kind differs
-- `SQLMESH_EXTERNAL_MISMATCH`: external-model expectation differs
-- `SQLMESH_OWNER_MISMATCH`: owner differs
-- `SQLMESH_OWNER_MISSING`: owner is required but absent
-- `SQLMESH_TAG_MISSING`: required tag is absent
-- `SQLMESH_AUDIT_MISSING`: required audit is absent
-- `SQLMESH_RELATION_MISMATCH`: catalog/schema/identifier/relation differs
-- `SQLMESH_COLUMN_MISSING`: required column is absent
-- `SQLMESH_COLUMN_TYPE_MISMATCH`: optional type check failed
-- `SQLMESH_COLUMN_EXTRA`: `allow_extra_columns: false` and SQLMesh declares an unlisted column
+The distribution and the wire contracts have independent versions. An adapter
+minor release may add support for additive semantic fields. A new contract or
+binding major requires dual-read support before an engine starts emitting it.
 
-## Verification
+CI tests SQLMesh `0.235.2` exactly as the oldest supported release and the
+newest release allowed by the public specifier. A scheduled engine-main canary
+is advisory; released engine artifacts remain authoritative.
+[`compatibility.json`](compatibility.json) records the released dependency and
+contract identities, and the immutable v1 baseline under
+[`compatibility/baseline/v1/`](compatibility/baseline/v1/) gates incompatible
+schema changes.
 
-```shell
-./scripts/run_integration_tests.sh
-```
+The release workflow verifies the approved public engine tag and commit, builds
+the adapter wheel and sdist once, tests that exact wheel, publishes those same
+bytes, and verifies their PyPI SHA-256 digests before creating a GitHub Release.
+`release-provenance.json` records the exact adapter, engine, SQLMesh, schema,
+source, and artifact identities for each release.
 
-The integration matrix installs the package, validates a SQLMesh DuckDB project,
-runs positive and negative contract checks, verifies exporter output, verifies
-matrix mode, and builds the package distribution.
+## Scope
 
-## Scope And Limits
-
-This package validates SQLMesh metadata and model column contracts against a
-versioned Semantic Rails snapshot. It does not prove that SQLMesh SQL is
-semantically equivalent to Semantic Rails query execution, and it does not
-replace SQLMesh plans or audits. Use it as a CI gate between Semantic Rails
-semantic model ownership and SQLMesh physical model implementation.
+This package validates SQLMesh metadata and physical columns against a
+versioned Semantic Rails snapshot. It does not prove SQL equivalence and does
+not replace SQLMesh plans or audits.

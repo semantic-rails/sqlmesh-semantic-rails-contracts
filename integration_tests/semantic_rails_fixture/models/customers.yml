@@ -1,6 +1,7 @@
 models:
   customers:
     relation: semantic_rails.customers
+    grain: [customer_id]
     entities:
       customer: {}
     dimensions:
@@ -9,6 +10,7 @@ models:
     measures: {}
   orders:
     relation: semantic_rails.orders
+    grain: [order_id]
     entities:
       order: {}
       customer:

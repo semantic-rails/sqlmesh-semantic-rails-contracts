@@ -1,0 +1,14 @@
+* @wtremml18
+
+/schemas/ @wtremml18
+/compatibility/ @wtremml18
+/compatibility.json @wtremml18
+/src/semantic_rails_contracts_core/ @wtremml18
+/src/sqlmesh_semantic_rails_contracts/ @wtremml18
+/scripts/ @wtremml18
+/tests/ @wtremml18
+/integration_tests/ @wtremml18
+/.github/workflows/ @wtremml18
+/pyproject.toml @wtremml18
+/CONTRACT_PAYLOAD_SPEC.md @wtremml18
+/RELEASE_CHECKLIST.md @wtremml18

@@ -1,17 +1,23 @@
 models:
   revenue:
     relation: semantic_rails.orders
+    grain: [order_id]
     entities:
+      revenue: {}
       customer:
         expr: orders.customer_id
     dimensions:
       order_month:
-        expr: DATE_TRUNC('month', orders.ordered_at)
-      status_bucket:
-        expr: CASE WHEN status = 'active' THEN status ELSE 'inactive' END
+        expr:
+          kind: column
+          column: ordered_at
     measures:
       revenue:
-        expr: SUM(order_amount)
+        kind: aggregate
+        expr:
+          kind: column
+          column: order_amount
+        agg: sum
       distinct_customers:
-        expr: COUNT(DISTINCT customer_id)
-
+        kind: entity_count
+        entity_key: customer_id

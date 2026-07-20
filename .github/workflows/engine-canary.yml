@@ -1,0 +1,76 @@
+name: Engine compatibility canary
+
+on:
+  schedule:
+    - cron: "23 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      engine_sha:
+        description: Exact lowercase 40-character engine commit SHA to qualify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-canary-${{ github.ref }}-${{ inputs.engine_sha || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: ${{ github.event_name == 'schedule' && 'advisory engine main' || 'exact engine candidate' }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'schedule' }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Require an immutable manual candidate identity
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ENGINE_SHA: ${{ inputs.engine_sha }}
+        run: |
+          if [[ ! "${ENGINE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "engine_sha must be an exact lowercase 40-character commit SHA." >&2
+            exit 1
+          fi
+      - name: Check out engine candidate
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: semantic-rails/semantic-rails
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.engine_sha || 'main' }}
+          path: .contract-engine
+      - name: Verify and record exact engine identity
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.engine_sha || '' }}
+          REQUESTED_ENGINE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.engine_sha || 'main' }}
+        run: |
+          RESOLVED_SHA="$(git -C .contract-engine rev-parse HEAD)"
+          test "$(git -C .contract-engine status --porcelain)" = ""
+          if [[ -n "${EXPECTED_SHA}" && "${RESOLVED_SHA}" != "${EXPECTED_SHA}" ]]; then
+            echo "Resolved engine checkout ${RESOLVED_SHA} does not match ${EXPECTED_SHA}." >&2
+            exit 1
+          fi
+          {
+            echo "## Engine candidate"
+            echo
+            echo "- Requested ref: \`${REQUESTED_ENGINE_REF}\`"
+            echo "- Exact commit: \`${RESOLVED_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: false
+      - name: Build the exact engine wheel
+        run: |
+          uv build --wheel --out-dir .engine-dist .contract-engine
+          ENGINE_WHEEL="$(find .engine-dist -maxdepth 1 -name 'semantic_rails-*.whl' -print -quit)"
+          test -n "${ENGINE_WHEEL}"
+          echo "SEMANTIC_RAILS_ENGINE_SPEC=${GITHUB_WORKSPACE}/${ENGINE_WHEEL}" >> "${GITHUB_ENV}"
+          sha256sum "${ENGINE_WHEEL}" >> "${GITHUB_STEP_SUMMARY}"
+      - name: Qualify the exact engine wheel
+        env:
+          SQLMESH_SPEC: "sqlmesh>=0.235.2,<1.0"
+          EXPORT_TESTS: "true"
+        run: ./scripts/run_integration_tests.sh

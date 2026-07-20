@@ -1,19 +1,40 @@
 # Contributing
 
-Run the full local matrix before opening a change:
+Run the full local matrix against an engine checkout before opening a change:
 
 ```shell
-./scripts/run_integration_tests.sh
+SEMANTIC_RAILS_ENGINE_PATH=../semantic-rails ./scripts/run_integration_tests.sh
 ```
 
-Keep the SQLMesh package contract payload shape aligned with the dbt package.
-When adding a new field, update:
+The engine owns semantic contract fields and fingerprints. Never add raw
+Semantic Rails YAML parsing or hashing here. SQLMesh binding changes update:
 
 - `src/semantic_rails_contracts_core/contracts.py`
 - `src/sqlmesh_semantic_rails_contracts/exporter.py`
-- `README.md`
+- `schemas/sqlmesh_binding.v1.json`
+- `compatibility/baseline/v1/sqlmesh_binding.v1.json` only when establishing a
+  new public binding major, never to make an incompatible same-major change pass
 - `integration_tests/basic/semantic_rails_contract.yml`
+- `tests/test_contract_v1.py`
 - `scripts/run_integration_tests.sh`
+
+Classify contract changes as `none`, `additive`, or `breaking`. Breaking changes
+require a new binding major and dual-read support before emission changes.
+Runtime validation and the published schemas must reject the same malformed v1
+payloads. Add both schema-resolution and runtime tests for every changed field,
+including duplicate and semantic-to-binding one-to-one invariants that JSON
+Schema cannot express.
+
+Before proposing a release, run:
+
+```shell
+python scripts/check_schema_compatibility.py
+python scripts/verify_release_metadata.py --allow-placeholder-engine-sha
+```
+
+The placeholder flag is for ordinary pre-release CI only. A release requires
+`compatibility.json` to contain the exact engine candidate commit and verifies
+that the public engine tag dereferences to that commit.
 
 Do not commit generated SQLMesh state, db files, logs, target directories, or
 virtual environments.

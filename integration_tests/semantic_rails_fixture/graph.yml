@@ -2,5 +2,10 @@ graph:
   entities:
     customer:
       key: customer_id
+      model: customers
     order:
       key: order_id
+      model: orders
+    revenue:
+      key: order_id
+      model: revenue

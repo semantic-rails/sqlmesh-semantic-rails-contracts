@@ -4,13 +4,25 @@ projects:
   - name: warning_project
     project_dir: ../basic
     contract:
-      packages:
-        - package_id: semantic_fixture
-          policy:
-            severity: warn
-          models:
-            - semantic_model_id: customers
-              sqlmesh_model: semantic_rails.customers
-              columns:
-                - name: definitely_missing_customer_column
-
+      contract_format_version: 1
+      semantic:
+        producer: {name: semantic-rails, version: 0.2.0}
+        packages:
+          - package_id: semantic_fixture
+            package_schema_version: 1
+            semantic_hash: sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            resources:
+              - semantic_model_id: customers
+                columns:
+                  - name: definitely_missing_customer_column
+                    required_by: [test.intentional_warning]
+      binding:
+        kind: sqlmesh
+        binding_version: 1
+        packages:
+          - package_id: semantic_fixture
+            policy:
+              severity: warning
+            resources:
+              - semantic_model_id: customers
+                sqlmesh_model: semantic_rails.customers

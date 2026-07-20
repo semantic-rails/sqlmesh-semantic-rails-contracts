@@ -28,21 +28,72 @@ TYPE_ALIASES = {
     "date": {"date"},
 }
 
+CONTRACT_FORMAT_VERSION = 1
+BINDING_VERSION = 1
+REPORT_FORMAT_VERSION = 1
+SQLMESH_BINDING_KIND = "sqlmesh"
+_SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+_TOP_LEVEL_FIELDS = {"contract_format_version", "semantic", "binding"}
+_SEMANTIC_FIELDS = {"producer", "packages"}
+_PRODUCER_FIELDS = {"name", "version"}
+_SEMANTIC_PACKAGE_FIELDS = {
+    "package_id",
+    "namespace",
+    "package_schema_version",
+    "semantic_hash",
+    "resources",
+}
+_SEMANTIC_RESOURCE_FIELDS = {"semantic_model_id", "relation", "columns"}
+_SEMANTIC_COLUMN_FIELDS = {"name", "data_type", "required_by"}
+_BINDING_FIELDS = {"kind", "binding_version", "producer", "packages"}
+_BINDING_PACKAGE_FIELDS = {
+    "package_id",
+    "accepted_semantic_hashes",
+    "policy",
+    "resources",
+}
+_POLICY_FIELDS = {
+    "severity",
+    "type_check",
+    "allow_extra_columns",
+    "require_owner",
+    "require_audits",
+}
+_BINDING_RESOURCE_FIELDS = {
+    "semantic_model_id",
+    "sqlmesh_model",
+    "sqlmesh_project",
+    "sqlmesh_gateway",
+    "sqlmesh_kind",
+    "sqlmesh_external",
+    "owner",
+    "tags",
+    "audits",
+    "sqlmesh_catalog",
+    "sqlmesh_schema",
+    "sqlmesh_identifier",
+    "sqlmesh_relation_name",
+    "severity",
+    "type_check",
+    "allow_extra_columns",
+}
+
 
 @dataclass(frozen=True)
 class ContractIssue:
     code: str
     severity: str
     package_id: str
-    model: str
+    semantic_model_id: str
     message: str
 
     def to_dict(self) -> dict[str, str]:
         return {
             "code": self.code,
-            "severity": self.severity,
+            "severity": normalize_severity(self.severity),
             "package_id": self.package_id,
-            "model": self.model,
+            "semantic_model_id": self.semantic_model_id,
             "message": self.message,
         }
 
@@ -65,7 +116,7 @@ class ContractResource:
 
     @property
     def severity(self) -> str:
-        return str(self.raw.get("severity") or self.policy.severity)
+        return normalize_severity(self.raw.get("severity") or self.policy.severity)
 
     @property
     def target_name(self) -> str:
@@ -112,8 +163,8 @@ def load_contract_file(path: Path) -> dict[str, Any]:
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(payload, dict):
         raise ValueError(f"{path} must contain a YAML mapping")
-    nested = payload.get("semantic_rails_contracts")
-    if nested is not None:
+    if "semantic_rails_contracts" in payload:
+        nested = payload["semantic_rails_contracts"]
         if not isinstance(nested, dict):
             raise ValueError("semantic_rails_contracts must be a mapping")
         return nested
@@ -128,6 +179,12 @@ def bool_value(value: Any) -> bool:
     return bool(value)
 
 
+def normalize_severity(value: Any) -> str:
+    """Normalize legacy ``warn`` values to the public report vocabulary."""
+
+    return "warning" if str(value or "").lower() in {"warn", "warning"} else "error"
+
+
 def as_list(value: Any) -> list[Any]:
     if value is None:
         return []
@@ -140,7 +197,838 @@ def as_list(value: Any) -> list[Any]:
     return [value]
 
 
+def contract_metadata(spec: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the independently versioned wire-contract identities."""
+
+    if "contract_format_version" not in spec:
+        return {
+            "contract_format_version": 0,
+            "binding_kind": None,
+            "binding_version": None,
+            "legacy": True,
+        }
+    binding = spec.get("binding")
+    binding_payload = binding if isinstance(binding, Mapping) else {}
+    raw_contract_version = spec.get("contract_format_version")
+    raw_binding_version = binding_payload.get("binding_version")
+    raw_binding_kind = binding_payload.get("kind")
+    return {
+        "contract_format_version": (
+            raw_contract_version
+            if isinstance(raw_contract_version, int) and not isinstance(raw_contract_version, bool)
+            else None
+        ),
+        "binding_kind": raw_binding_kind if isinstance(raw_binding_kind, str) else None,
+        "binding_version": (
+            raw_binding_version
+            if isinstance(raw_binding_version, int) and not isinstance(raw_binding_version, bool)
+            else None
+        ),
+        "legacy": False,
+    }
+
+
+def _issue(
+    code: str,
+    message: str,
+    *,
+    package_id: str = "",
+    semantic_model_id: str = "",
+) -> ContractIssue:
+    return ContractIssue(code, "error", package_id, semantic_model_id, message)
+
+
+def _is_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_known_fields(
+    value: Mapping[str, Any],
+    allowed: set[str],
+    *,
+    label: str,
+    code: str,
+    issues: list[ContractIssue],
+    package_id: str = "",
+    semantic_model_id: str = "",
+) -> bool:
+    valid = True
+    for raw_key in value:
+        key = str(raw_key)
+        if key not in allowed:
+            issues.append(
+                _issue(
+                    code,
+                    f"Unsupported {label} field {key}.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            valid = False
+    return valid
+
+
+def _validate_string_list(
+    value: Any,
+    *,
+    field_name: str,
+    code: str,
+    issues: list[ContractIssue],
+    package_id: str,
+    semantic_model_id: str = "",
+) -> bool:
+    if not isinstance(value, list):
+        issues.append(
+            _issue(
+                code,
+                f"{field_name} must be a list.",
+                package_id=package_id,
+                semantic_model_id=semantic_model_id,
+            )
+        )
+        return False
+    valid = True
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        if not _is_nonempty_string(item):
+            issues.append(
+                _issue(
+                    code,
+                    f"{field_name}[{index}] must be a non-empty string.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            valid = False
+            continue
+        normalized = str(item)
+        if normalized in seen:
+            issues.append(
+                _issue(
+                    code,
+                    f"{field_name} must not contain duplicate values.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            valid = False
+        seen.add(normalized)
+    return valid
+
+
+def _validate_producer(
+    value: Any,
+    *,
+    expected_name: str,
+    field_name: str,
+    required: bool,
+    issues: list[ContractIssue],
+) -> bool:
+    if value is None and not required:
+        return True
+    if not isinstance(value, Mapping):
+        issues.append(_issue("INVALID_CONTRACT", f"{field_name} must be a mapping with name and version."))
+        return False
+    valid = _validate_known_fields(
+        value,
+        _PRODUCER_FIELDS,
+        label=field_name,
+        code="INVALID_CONTRACT",
+        issues=issues,
+    )
+    if value.get("name") != expected_name:
+        issues.append(_issue("INVALID_CONTRACT", f"{field_name}.name must be {expected_name}."))
+        valid = False
+    if not _is_nonempty_string(value.get("version")):
+        issues.append(_issue("INVALID_CONTRACT", f"{field_name}.version must be a non-empty string."))
+        valid = False
+    return valid
+
+
+def _semantic_resource_rows(
+    value: Any,
+    *,
+    package_id: str,
+    issues: list[ContractIssue],
+) -> tuple[dict[str, dict[str, Any]], bool]:
+    if not isinstance(value, list):
+        issues.append(
+            _issue(
+                "INVALID_SEMANTIC_PACKAGE",
+                "semantic package resources must be a list.",
+                package_id=package_id,
+            )
+        )
+        return {}, False
+
+    rows: dict[str, dict[str, Any]] = {}
+    seen_ids: set[str] = set()
+    valid = True
+    for index, raw_row in enumerate(value):
+        if not isinstance(raw_row, Mapping):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_RESOURCE",
+                    f"semantic.resources[{index}] must be a mapping.",
+                    package_id=package_id,
+                )
+            )
+            valid = False
+            continue
+        row = dict(raw_row)
+        semantic_model_id = str(row.get("semantic_model_id") or "").strip()
+        row_valid = _validate_known_fields(
+            row,
+            _SEMANTIC_RESOURCE_FIELDS,
+            label="semantic resource",
+            code="INVALID_SEMANTIC_RESOURCE",
+            issues=issues,
+            package_id=package_id,
+            semantic_model_id=semantic_model_id,
+        )
+        if not _is_nonempty_string(row.get("semantic_model_id")):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_RESOURCE",
+                    "semantic resources must include a non-empty semantic_model_id.",
+                    package_id=package_id,
+                )
+            )
+            row_valid = False
+        if semantic_model_id and semantic_model_id in seen_ids:
+            issues.append(
+                _issue(
+                    "DUPLICATE_SEMANTIC_RESOURCE",
+                    f"semantic_model_id {semantic_model_id} is duplicated in semantic resources.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        if semantic_model_id:
+            seen_ids.add(semantic_model_id)
+        relation = row.get("relation")
+        if "relation" in row and not isinstance(relation, str):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_RESOURCE",
+                    "semantic resource relation must be a string when provided.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+
+        columns = row.get("columns")
+        if not isinstance(columns, list):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_RESOURCE",
+                    "semantic resource columns must be a list.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        else:
+            for column_index, raw_column in enumerate(columns):
+                if not isinstance(raw_column, Mapping):
+                    issues.append(
+                        _issue(
+                            "INVALID_SEMANTIC_COLUMN",
+                            f"columns[{column_index}] must be a mapping.",
+                            package_id=package_id,
+                            semantic_model_id=semantic_model_id,
+                        )
+                    )
+                    row_valid = False
+                    continue
+                column = dict(raw_column)
+                if not _validate_known_fields(
+                    column,
+                    _SEMANTIC_COLUMN_FIELDS,
+                    label="semantic column",
+                    code="INVALID_SEMANTIC_COLUMN",
+                    issues=issues,
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                ):
+                    row_valid = False
+                if not _is_nonempty_string(column.get("name")):
+                    issues.append(
+                        _issue(
+                            "INVALID_SEMANTIC_COLUMN",
+                            "Every semantic column must include a non-empty name.",
+                            package_id=package_id,
+                            semantic_model_id=semantic_model_id,
+                        )
+                    )
+                    row_valid = False
+                data_type = column.get("data_type")
+                if "data_type" in column and not _is_nonempty_string(data_type):
+                    issues.append(
+                        _issue(
+                            "INVALID_SEMANTIC_COLUMN",
+                            "Semantic column data_type must be a non-empty string when provided.",
+                            package_id=package_id,
+                            semantic_model_id=semantic_model_id,
+                        )
+                    )
+                    row_valid = False
+                if not _validate_string_list(
+                    column.get("required_by"),
+                    field_name="semantic column required_by",
+                    code="INVALID_SEMANTIC_COLUMN",
+                    issues=issues,
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                ):
+                    row_valid = False
+
+        if row_valid:
+            row["semantic_model_id"] = semantic_model_id
+            rows[semantic_model_id] = row
+        valid = valid and row_valid
+    return rows, valid
+
+
+def _validate_policy(
+    value: Any,
+    *,
+    package_id: str,
+    issues: list[ContractIssue],
+) -> tuple[dict[str, Any], bool]:
+    if not isinstance(value, Mapping):
+        issues.append(
+            _issue(
+                "INVALID_BINDING_PACKAGE",
+                "SQLMesh binding policy must be a mapping.",
+                package_id=package_id,
+            )
+        )
+        return {}, False
+    policy = dict(value)
+    valid = _validate_known_fields(
+        policy,
+        _POLICY_FIELDS,
+        label="SQLMesh policy",
+        code="INVALID_BINDING_PACKAGE",
+        issues=issues,
+        package_id=package_id,
+    )
+    if "severity" in policy and policy["severity"] not in {"error", "warning"}:
+        issues.append(
+            _issue(
+                "INVALID_BINDING_PACKAGE",
+                "SQLMesh policy severity must be error or warning.",
+                package_id=package_id,
+            )
+        )
+        valid = False
+    if "type_check" in policy and policy["type_check"] not in {"ignore", "compatible", "exact"}:
+        issues.append(
+            _issue(
+                "INVALID_BINDING_PACKAGE",
+                "SQLMesh policy type_check must be ignore, compatible, or exact.",
+                package_id=package_id,
+            )
+        )
+        valid = False
+    for field_name in ("allow_extra_columns", "require_owner", "require_audits"):
+        if field_name in policy and not isinstance(policy[field_name], bool):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_PACKAGE",
+                    f"SQLMesh policy {field_name} must be a boolean.",
+                    package_id=package_id,
+                )
+            )
+            valid = False
+    return policy, valid
+
+
+def _binding_resource_rows(
+    value: Any,
+    *,
+    package_id: str,
+    issues: list[ContractIssue],
+) -> tuple[dict[str, dict[str, Any]], bool]:
+    if not isinstance(value, list) or not value:
+        issues.append(
+            _issue(
+                "INVALID_BINDING_PACKAGE",
+                "SQLMesh binding package resources must be a non-empty list.",
+                package_id=package_id,
+            )
+        )
+        return {}, False
+
+    rows: dict[str, dict[str, Any]] = {}
+    seen_ids: set[str] = set()
+    valid = True
+    string_fields = {
+        "sqlmesh_model",
+        "sqlmesh_project",
+        "sqlmesh_gateway",
+        "sqlmesh_kind",
+        "owner",
+        "sqlmesh_catalog",
+        "sqlmesh_schema",
+        "sqlmesh_identifier",
+        "sqlmesh_relation_name",
+    }
+    for index, raw_row in enumerate(value):
+        if not isinstance(raw_row, Mapping):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    f"binding.resources[{index}] must be a mapping.",
+                    package_id=package_id,
+                )
+            )
+            valid = False
+            continue
+        row = dict(raw_row)
+        semantic_model_id = str(row.get("semantic_model_id") or "").strip()
+        row_valid = _validate_known_fields(
+            row,
+            _BINDING_RESOURCE_FIELDS,
+            label="SQLMesh binding resource",
+            code="INVALID_BINDING_RESOURCE",
+            issues=issues,
+            package_id=package_id,
+            semantic_model_id=semantic_model_id,
+        )
+        if "columns" in row:
+            issues.append(
+                _issue(
+                    "INVALID_MODEL_CONTRACT",
+                    "binding resources must not redefine semantic columns.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        if not _is_nonempty_string(row.get("semantic_model_id")):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    "SQLMesh binding resources must include a non-empty semantic_model_id.",
+                    package_id=package_id,
+                )
+            )
+            row_valid = False
+        if semantic_model_id and semantic_model_id in seen_ids:
+            issues.append(
+                _issue(
+                    "DUPLICATE_BINDING_RESOURCE",
+                    f"semantic_model_id {semantic_model_id} is duplicated in SQLMesh binding resources.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        if semantic_model_id:
+            seen_ids.add(semantic_model_id)
+        for field_name in string_fields:
+            if field_name == "sqlmesh_model" and not _is_nonempty_string(row.get(field_name)):
+                issues.append(
+                    _issue(
+                        "INVALID_BINDING_RESOURCE",
+                        "SQLMesh binding resources must include a non-empty sqlmesh_model.",
+                        package_id=package_id,
+                        semantic_model_id=semantic_model_id,
+                    )
+                )
+                row_valid = False
+            elif field_name in row and not isinstance(row[field_name], str):
+                issues.append(
+                    _issue(
+                        "INVALID_BINDING_RESOURCE",
+                        f"{field_name} must be a string.",
+                        package_id=package_id,
+                        semantic_model_id=semantic_model_id,
+                    )
+                )
+                row_valid = False
+        if "sqlmesh_external" in row and not isinstance(row["sqlmesh_external"], bool):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    "sqlmesh_external must be a boolean.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        for field_name in ("tags", "audits"):
+            if field_name in row and not _validate_string_list(
+                row[field_name],
+                field_name=field_name,
+                code="INVALID_BINDING_RESOURCE",
+                issues=issues,
+                package_id=package_id,
+                semantic_model_id=semantic_model_id,
+            ):
+                row_valid = False
+        if "severity" in row and row["severity"] not in {"error", "warning"}:
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    "Binding resource severity must be error or warning.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        if "type_check" in row and row["type_check"] not in {"ignore", "compatible", "exact"}:
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    "Binding resource type_check must be ignore, compatible, or exact.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+        if "allow_extra_columns" in row and not isinstance(row["allow_extra_columns"], bool):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_RESOURCE",
+                    "Binding resource allow_extra_columns must be a boolean.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+            row_valid = False
+
+        if row_valid:
+            row["semantic_model_id"] = semantic_model_id
+            rows[semantic_model_id] = row
+        valid = valid and row_valid
+    return rows, valid
+
+
+def _v1_packages(spec: Mapping[str, Any]) -> tuple[list[ContractIssue], list[Mapping[str, Any]]]:
+    issues: list[ContractIssue] = []
+    _validate_known_fields(
+        spec,
+        _TOP_LEVEL_FIELDS,
+        label="top-level composed contract",
+        code="INVALID_CONTRACT",
+        issues=issues,
+    )
+    contract_format_version = spec.get("contract_format_version")
+    if not _is_integer(contract_format_version) or contract_format_version != CONTRACT_FORMAT_VERSION:
+        return [
+            *issues,
+            _issue(
+                "UNSUPPORTED_CONTRACT_FORMAT_VERSION",
+                "contract_format_version must be integer 1.",
+            ),
+        ], []
+
+    semantic = spec.get("semantic")
+    binding = spec.get("binding")
+    if not isinstance(semantic, Mapping):
+        issues.append(_issue("INVALID_CONTRACT", "semantic must be a mapping."))
+        return issues, []
+    if not isinstance(binding, Mapping):
+        issues.append(_issue("INVALID_CONTRACT", "binding must be a mapping."))
+        return issues, []
+    _validate_known_fields(
+        semantic,
+        _SEMANTIC_FIELDS,
+        label="semantic",
+        code="INVALID_CONTRACT",
+        issues=issues,
+    )
+    _validate_producer(
+        semantic.get("producer"),
+        expected_name="semantic-rails",
+        field_name="semantic.producer",
+        required=True,
+        issues=issues,
+    )
+    _validate_known_fields(
+        binding,
+        _BINDING_FIELDS,
+        label="SQLMesh binding",
+        code="INVALID_CONTRACT",
+        issues=issues,
+    )
+    if "producer" in binding:
+        _validate_producer(
+            binding.get("producer"),
+            expected_name="sqlmesh-semantic-rails-contracts",
+            field_name="binding.producer",
+            required=True,
+            issues=issues,
+        )
+    if binding.get("kind") != SQLMESH_BINDING_KIND:
+        issues.append(
+            _issue(
+                "BINDING_KIND_MISMATCH",
+                "binding.kind must be sqlmesh for this validator.",
+            )
+        )
+    binding_version = binding.get("binding_version")
+    if not _is_integer(binding_version) or binding_version != BINDING_VERSION:
+        issues.append(
+            _issue(
+                "UNSUPPORTED_BINDING_VERSION",
+                "binding.binding_version must be integer 1.",
+            )
+        )
+
+    semantic_packages = semantic.get("packages")
+    binding_packages = binding.get("packages")
+    if not isinstance(semantic_packages, list) or not semantic_packages:
+        issues.append(_issue("INVALID_CONTRACT", "semantic.packages must be a non-empty list."))
+        return issues, []
+    if not isinstance(binding_packages, list) or not binding_packages:
+        issues.append(_issue("INVALID_CONTRACT", "binding.packages must be a non-empty list."))
+        return issues, []
+
+    binding_by_package: dict[str, tuple[dict[str, Any], dict[str, dict[str, Any]], bool]] = {}
+    for index, raw_package in enumerate(binding_packages):
+        if not isinstance(raw_package, Mapping):
+            issues.append(_issue("INVALID_BINDING_PACKAGE", f"binding.packages[{index}] must be a mapping."))
+            continue
+        binding_package = dict(raw_package)
+        package_id = str(raw_package.get("package_id") or "").strip()
+        package_valid = _validate_known_fields(
+            binding_package,
+            _BINDING_PACKAGE_FIELDS,
+            label="SQLMesh binding package",
+            code="INVALID_BINDING_PACKAGE",
+            issues=issues,
+            package_id=package_id,
+        )
+        if not _is_nonempty_string(raw_package.get("package_id")):
+            issues.append(
+                _issue(
+                    "INVALID_BINDING_PACKAGE",
+                    f"binding.packages[{index}] must include a non-empty package_id.",
+                )
+            )
+            continue
+        if package_id in binding_by_package:
+            issues.append(
+                _issue(
+                    "DUPLICATE_BINDING_PACKAGE",
+                    f"binding contains duplicate package_id {package_id}.",
+                    package_id=package_id,
+                )
+            )
+            continue
+        accepted_hashes = binding_package.get("accepted_semantic_hashes")
+        if "accepted_semantic_hashes" in binding_package:
+            if not isinstance(accepted_hashes, list):
+                issues.append(
+                    _issue(
+                        "INVALID_BINDING_PACKAGE",
+                        "accepted_semantic_hashes must be a list.",
+                        package_id=package_id,
+                    )
+                )
+                package_valid = False
+            else:
+                seen_hashes: set[str] = set()
+                for value in accepted_hashes:
+                    if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+                        issues.append(
+                            _issue(
+                                "INVALID_BINDING_PACKAGE",
+                                "accepted_semantic_hashes entries must be sha256: plus "
+                                "64 lowercase hexadecimal characters.",
+                                package_id=package_id,
+                            )
+                        )
+                        package_valid = False
+                    elif value in seen_hashes:
+                        issues.append(
+                            _issue(
+                                "INVALID_BINDING_PACKAGE",
+                                "accepted_semantic_hashes must not contain duplicates.",
+                                package_id=package_id,
+                            )
+                        )
+                        package_valid = False
+                    seen_hashes.add(str(value))
+        if "policy" in binding_package:
+            policy, policy_valid = _validate_policy(
+                binding_package.get("policy"),
+                package_id=package_id,
+                issues=issues,
+            )
+        else:
+            policy, policy_valid = {}, True
+        binding_rows, rows_valid = _binding_resource_rows(
+            binding_package.get("resources"),
+            package_id=package_id,
+            issues=issues,
+        )
+        binding_package["policy"] = policy
+        binding_by_package[package_id] = (
+            binding_package,
+            binding_rows,
+            package_valid and policy_valid and rows_valid,
+        )
+
+    semantic_by_package: dict[str, tuple[dict[str, Any], dict[str, dict[str, Any]], bool]] = {}
+    for index, raw_package in enumerate(semantic_packages):
+        if not isinstance(raw_package, Mapping):
+            issues.append(_issue("INVALID_SEMANTIC_PACKAGE", f"semantic.packages[{index}] must be a mapping."))
+            continue
+        semantic_package = dict(raw_package)
+        package_id = str(raw_package.get("package_id") or "").strip()
+        package_valid = _validate_known_fields(
+            semantic_package,
+            _SEMANTIC_PACKAGE_FIELDS,
+            label="semantic package",
+            code="INVALID_SEMANTIC_PACKAGE",
+            issues=issues,
+            package_id=package_id,
+        )
+        if not _is_nonempty_string(raw_package.get("package_id")):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_PACKAGE",
+                    f"semantic.packages[{index}] must include a non-empty package_id.",
+                )
+            )
+            continue
+        if package_id in semantic_by_package:
+            issues.append(
+                _issue(
+                    "DUPLICATE_SEMANTIC_PACKAGE",
+                    f"semantic contains duplicate package_id {package_id}.",
+                    package_id=package_id,
+                )
+            )
+            continue
+        namespace = semantic_package.get("namespace")
+        if "namespace" in semantic_package and not isinstance(namespace, str):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_PACKAGE",
+                    "semantic package namespace must be a string when provided.",
+                    package_id=package_id,
+                )
+            )
+            package_valid = False
+        package_schema_version = semantic_package.get("package_schema_version")
+        if package_schema_version is None:
+            issues.append(
+                _issue(
+                    "PACKAGE_SCHEMA_VERSION_REQUIRED",
+                    "semantic package package_schema_version is required.",
+                    package_id=package_id,
+                )
+            )
+            package_valid = False
+        elif not _is_integer(package_schema_version) or package_schema_version != 1:
+            issues.append(
+                _issue(
+                    "UNSUPPORTED_PACKAGE_SCHEMA_VERSION",
+                    "semantic package package_schema_version must be integer 1.",
+                    package_id=package_id,
+                )
+            )
+            package_valid = False
+        semantic_hash = semantic_package.get("semantic_hash")
+        if not isinstance(semantic_hash, str) or not _SHA256_RE.fullmatch(semantic_hash):
+            issues.append(
+                _issue(
+                    "INVALID_SEMANTIC_PACKAGE",
+                    "semantic_hash must be sha256: followed by 64 lowercase hexadecimal characters.",
+                    package_id=package_id,
+                )
+            )
+            package_valid = False
+        semantic_rows, rows_valid = _semantic_resource_rows(
+            semantic_package.get("resources"),
+            package_id=package_id,
+            issues=issues,
+        )
+        semantic_by_package[package_id] = (
+            semantic_package,
+            semantic_rows,
+            package_valid and rows_valid,
+        )
+
+    out: list[Mapping[str, Any]] = []
+    for package_id in sorted(set(binding_by_package) - set(semantic_by_package)):
+        issues.append(
+            _issue(
+                "SEMANTIC_PACKAGE_NOT_FOUND",
+                f"SQLMesh binding package {package_id} has no matching semantic package.",
+                package_id=package_id,
+            )
+        )
+    for package_id in sorted(set(semantic_by_package) - set(binding_by_package)):
+        issues.append(
+            _issue(
+                "SQLMESH_BINDING_PACKAGE_NOT_FOUND",
+                f"No SQLMesh binding exists for semantic package {package_id}.",
+                package_id=package_id,
+            )
+        )
+
+    for package_id in sorted(set(semantic_by_package) & set(binding_by_package)):
+        semantic_package, semantic_rows, semantic_valid = semantic_by_package[package_id]
+        binding_package, binding_rows, binding_valid = binding_by_package[package_id]
+        for semantic_model_id in sorted(set(binding_rows) - set(semantic_rows)):
+            issues.append(
+                _issue(
+                    "SEMANTIC_RESOURCE_NOT_FOUND",
+                    f"Binding resource {semantic_model_id} has no matching semantic resource.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+        for semantic_model_id in sorted(set(semantic_rows) - set(binding_rows)):
+            issues.append(
+                _issue(
+                    "SQLMESH_BINDING_RESOURCE_NOT_FOUND",
+                    f"Semantic resource {semantic_model_id} has no matching SQLMesh binding resource.",
+                    package_id=package_id,
+                    semantic_model_id=semantic_model_id,
+                )
+            )
+
+        merged_resources: list[dict[str, Any]] = []
+        for semantic_model_id in sorted(set(semantic_rows) & set(binding_rows)):
+            semantic_row = semantic_rows[semantic_model_id]
+            binding_row = binding_rows[semantic_model_id]
+            columns = semantic_row["columns"]
+            merged = {**semantic_row, **binding_row, "columns": [dict(row) for row in columns]}
+            merged_resources.append(merged)
+
+        if semantic_valid and binding_valid:
+            out.append(
+                {
+                    "package_id": package_id,
+                    "namespace": semantic_package.get("namespace"),
+                    "package_schema_version": semantic_package.get("package_schema_version"),
+                    "semantic_hash": semantic_package.get("semantic_hash"),
+                    "accepted_semantic_hashes": binding_package.get("accepted_semantic_hashes", []),
+                    "policy": binding_package.get("policy", {}),
+                    "resources": merged_resources,
+                }
+            )
+    return issues, out
+
+
 def packages(spec: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    if "contract_format_version" in spec:
+        _, rows = _v1_packages(spec)
+        return rows
     package_rows = spec.get("packages")
     if isinstance(package_rows, list):
         return [row for row in package_rows if isinstance(row, Mapping)]
@@ -183,8 +1071,24 @@ def contract_resources(spec: Mapping[str, Any]) -> tuple[list[ContractIssue], li
             )
         ], []
 
-    package_rows = packages(spec)
+    if "contract_format_version" in spec:
+        version_issues, package_rows = _v1_packages(spec)
+        issues.extend(version_issues)
+    else:
+        issues.append(
+            ContractIssue(
+                "LEGACY_CONTRACT_FORMAT",
+                "warning",
+                "",
+                "",
+                "Legacy packages: contracts remain readable for migration only; "
+                "regenerate a contract_format_version: 1 payload.",
+            )
+        )
+        package_rows = packages(spec)
     if not package_rows:
+        if issues:
+            return issues, []
         return [
             ContractIssue(
                 "INVALID_CONTRACT",
@@ -197,19 +1101,28 @@ def contract_resources(spec: Mapping[str, Any]) -> tuple[list[ContractIssue], li
 
     for package_contract in package_rows:
         package_id = str(
-            package_contract.get("package_id")
-            or package_contract.get("id")
-            or package_contract.get("name")
-            or ""
+            package_contract.get("package_id") or package_contract.get("id") or package_contract.get("name") or ""
         )
         policy_payload = package_contract.get("policy") if isinstance(package_contract.get("policy"), Mapping) else {}
         policy = ContractPolicy(
-            severity=str(policy_payload.get("severity", "error")),
+            severity=normalize_severity(policy_payload.get("severity", "error")),
             type_check=str(policy_payload.get("type_check", "ignore")),
             allow_extra_columns=bool_value(policy_payload.get("allow_extra_columns", True)),
             require_owner=bool_value(policy_payload.get("require_owner", False)),
             require_audits=bool_value(policy_payload.get("require_audits", False)),
         )
+        legacy_contract_version = package_contract.get("contract_version")
+        if "contract_format_version" not in spec and legacy_contract_version not in (None, 1):
+            issues.append(
+                ContractIssue(
+                    "UNSUPPORTED_CONTRACT_VERSION",
+                    "error",
+                    package_id,
+                    "",
+                    "Legacy contract_version must be 1.",
+                )
+            )
+            continue
         semantic_hash = package_contract.get("semantic_hash")
         accepted_hashes = as_list(package_contract.get("accepted_semantic_hashes"))
         if accepted_hashes and semantic_hash not in accepted_hashes:

@@ -6,8 +6,15 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from semantic_rails_contracts_core import collect_contract_issues, contract_summary, load_contract_file
+from semantic_rails_contracts_core import (
+    collect_contract_issues,
+    contract_metadata,
+    contract_summary,
+    load_contract_file,
+)
+from semantic_rails_contracts_core.contracts import REPORT_FORMAT_VERSION
 
+from . import __version__
 from .sqlmesh_adapter import load_sqlmesh_snapshots
 
 
@@ -23,7 +30,11 @@ def check_project(
     project_dir = project_dir.expanduser().resolve()
     if contract_file and not contract_file.is_absolute():
         contract_file = project_dir / contract_file
-    spec = dict(contract or load_contract_file(contract_file or project_dir / "semantic_rails_contract.yml"))
+    spec = dict(
+        contract
+        if contract is not None
+        else load_contract_file(contract_file or project_dir / "semantic_rails_contract.yml")
+    )
     snapshots = load_sqlmesh_snapshots(project_dir, gateway=gateway)
     issues = collect_contract_issues(
         spec,
@@ -33,8 +44,21 @@ def check_project(
         ambiguous_code="SQLMESH_MODEL_AMBIGUOUS",
     )
     model_count = len({snapshot.name for snapshot in snapshots.values()})
+    errors, warnings = split_issues([issue.to_dict() for issue in issues])
     return {
-        "summary": {**contract_summary(spec), "sqlmesh_model_count": model_count},
+        "report_format_version": REPORT_FORMAT_VERSION,
+        "validator": {
+            "name": "sqlmesh-semantic-rails-contracts",
+            "version": __version__,
+        },
+        "input": contract_metadata(spec),
+        "ok": not errors,
+        "summary": {
+            **contract_summary(spec),
+            "error_count": len(errors),
+            "warning_count": len(warnings),
+            "sqlmesh_model_count": model_count,
+        },
         "issues": [issue.to_dict() for issue in issues],
     }
 
@@ -43,7 +67,7 @@ def split_issues(issues: list[dict[str, str]]) -> tuple[list[dict[str, str]], li
     warnings: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     for issue in issues:
-        if issue.get("severity", "error") == "warn":
+        if issue.get("severity", "error") in {"warn", "warning"}:
             warnings.append(issue)
         else:
             errors.append(issue)
@@ -52,8 +76,9 @@ def split_issues(issues: list[dict[str, str]]) -> tuple[list[dict[str, str]], li
 
 def format_issue(issue: Mapping[str, str]) -> str:
     scope = issue.get("package_id", "")
-    if issue.get("model"):
-        scope = f"{scope}.{issue['model']}" if scope else issue["model"]
+    if issue.get("semantic_model_id"):
+        model_id = issue["semantic_model_id"]
+        scope = f"{scope}.{model_id}" if scope else model_id
     return f"{issue.get('severity', 'error').upper()} {issue.get('code')} [{scope}] {issue.get('message')}"
 
 

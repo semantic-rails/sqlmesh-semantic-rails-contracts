@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--sqlmesh-schema", default=None)
     export.add_argument("--sqlmesh-identifier", default=None)
     export.add_argument("--sqlmesh-relation-name", default=None)
-    export.add_argument("--severity", default="error", choices=["error", "warn"])
+    export.add_argument("--severity", default="error", choices=["error", "warning", "warn"])
     export.add_argument("--type-check", default="ignore", choices=["ignore", "compatible", "exact"])
     export.add_argument("--allow-extra-columns", default=True, type=parse_bool)
     export.add_argument("--require-owner", default=False, type=parse_bool)
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True))
-            has_errors = any(issue.get("severity", "error") != "warn" for issue in result["issues"])
+            has_errors = any(issue.get("severity", "error") not in {"warn", "warning"} for issue in result["issues"])
             return 0 if args.warn_only or not has_errors else 1
         assert_report(result, warn_only=args.warn_only)
         return 0
@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"ERROR [{project.get('name')}] {project['error']}", file=stream)
                 continue
             for issue in project.get("report", {}).get("issues", []):
-                if issue.get("severity", "error") == "warn" or not project.get("ok"):
+                if issue.get("severity", "error") in {"warn", "warning"} or not project.get("ok"):
                     print(format_issue(issue), file=stream)
         return 0 if result["ok"] else 1
     if args.command == "export":

@@ -6,6 +6,7 @@ from .contracts import (
     ContractResource,
     ResourceSnapshot,
     collect_contract_issues,
+    contract_metadata,
     contract_summary,
     load_contract_file,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "ContractResource",
     "ResourceSnapshot",
     "collect_contract_issues",
+    "contract_metadata",
     "contract_summary",
     "load_contract_file",
 ]

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semantic-rails.com/schemas/sqlmesh_validation_report.v1.json",
+  "title": "SQLMesh Semantic Rails validation report (v1)",
+  "description": "SQLMesh specialization of the engine-owned Semantic Rails ValidationReportV1 envelope.",
+  "allOf": [
+    {
+      "$ref": "https://semantic-rails.com/schemas/validation_report.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "validator": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "const": "sqlmesh-semantic-rails-contracts"
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "sqlmesh_model_count"
+          ],
+          "properties": {
+            "sqlmesh_model_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

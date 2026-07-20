@@ -5,22 +5,61 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   integration:
+    name: SQLMesh ${{ matrix.line }} (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - line: minimum
+            python-version: "3.10"
+            sqlmesh-spec: "sqlmesh==0.235.2"
+            export-tests: "false"
+            engine-spec: ""
+          - line: current
+            python-version: "3.11"
+            sqlmesh-spec: "sqlmesh>=0.235.2,<1.0"
+            export-tests: "true"
+            engine-spec: "semantic-rails>=0.2,<0.3"
+          - line: newest
+            python-version: "3.12"
+            sqlmesh-spec: "sqlmesh>=0.235.2,<1.0"
+            export-tests: "true"
+            engine-spec: "semantic-rails>=0.2,<0.3"
     steps:
-      - uses: actions/checkout@v7.0.0
-      - uses: actions/setup-python@v6.2.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: false
       - name: Run integration tests
+        env:
+          SEMANTIC_RAILS_ENGINE_SPEC: ${{ matrix.engine-spec }}
+          SQLMESH_SPEC: ${{ matrix.sqlmesh-spec }}
+          EXPORT_TESTS: ${{ matrix.export-tests }}
         run: ./scripts/run_integration_tests.sh
+
+  all-checks:
+    name: All checks pass
+    if: ${{ always() }}
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the compatibility matrix
+        env:
+          RESULT: ${{ needs.integration.result }}
+        run: test "$RESULT" = success

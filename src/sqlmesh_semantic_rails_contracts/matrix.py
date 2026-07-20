@@ -36,8 +36,8 @@ def run_matrix(config_path: Path) -> dict[str, Any]:
                 contract_file=contract_file,
                 gateway=project.get("gateway"),
             )
-            errors = [issue for issue in report["issues"] if issue.get("severity", "error") != "warn"]
-            warnings = [issue for issue in report["issues"] if issue.get("severity", "error") == "warn"]
+            errors = [issue for issue in report["issues"] if issue.get("severity", "error") not in {"warn", "warning"}]
+            warnings = [issue for issue in report["issues"] if issue.get("severity", "error") in {"warn", "warning"}]
             results.append(
                 {
                     "name": name,
@@ -64,6 +64,8 @@ def run_matrix(config_path: Path) -> dict[str, Any]:
     failed = [result for result in results if not result["ok"]]
     warning_count = sum(int(result.get("warning_count", 0)) for result in results)
     return {
+        "report_format_version": 1,
+        "report_kind": "sqlmesh_contract_matrix",
         "ok": not failed,
         "project_count": len(results),
         "passed_count": len(results) - len(failed),

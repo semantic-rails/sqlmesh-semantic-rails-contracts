@@ -1,0 +1,54 @@
+{
+  "manifest_version": 1,
+  "distribution": {
+    "name": "sqlmesh-semantic-rails-contracts",
+    "version": "0.2.0",
+    "python": ">=3.10"
+  },
+  "engine": {
+    "name": "semantic-rails",
+    "version": "0.2.0",
+    "specifier": ">=0.2,<0.3",
+    "repository": "https://github.com/semantic-rails/semantic-rails.git",
+    "tag": "v0.2.0",
+    "engine_candidate_sha": "d2adeb160a1f31f3d64b0e8b82e5c7fafd8a83df"
+  },
+  "sqlmesh": {
+    "specifier": ">=0.235.2,<1.0",
+    "minimum_tested": "0.235.2",
+    "release_test_version": "0.236.0"
+  },
+  "contracts": {
+    "semantic_contract": {
+      "owner": "semantic-rails",
+      "major": 1,
+      "schema_id": "https://semantic-rails.com/schemas/semantic_contract.v1.json"
+    },
+    "binding": {
+      "owner": "sqlmesh-semantic-rails-contracts",
+      "kind": "sqlmesh",
+      "major": 1,
+      "schema_id": "https://semantic-rails.com/schemas/sqlmesh_binding.v1.json"
+    },
+    "composed_contract": {
+      "owner": "sqlmesh-semantic-rails-contracts",
+      "major": 1,
+      "schema_id": "https://semantic-rails.com/schemas/sqlmesh_contract.v1.json"
+    },
+    "validation_report": {
+      "owner": "semantic-rails",
+      "major": 1,
+      "schema_id": "https://semantic-rails.com/schemas/validation_report.v1.json"
+    },
+    "sqlmesh_validation_report": {
+      "owner": "sqlmesh-semantic-rails-contracts",
+      "major": 1,
+      "schema_id": "https://semantic-rails.com/schemas/sqlmesh_validation_report.v1.json"
+    }
+  },
+  "adapter_owned_schema_files": [
+    "sqlmesh_binding.v1.json",
+    "sqlmesh_contract.v1.json",
+    "sqlmesh_validation_report.v1.json"
+  ]
+}

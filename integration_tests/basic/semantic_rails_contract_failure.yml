@@ -1,15 +1,26 @@
 semantic_rails_contracts:
-  packages:
-    - package_id: semantic_fixture
-      namespace: semantic_fixture
-      contract_version: 1
-      semantic_hash: sha256:fixture
-      accepted_semantic_hashes:
-        - sha256:fixture
-      policy:
-        severity: error
-      models:
-        - semantic_model_id: customers
-          sqlmesh_model: semantic_rails.customers
-          columns:
-            - name: definitely_missing_customer_column
+  contract_format_version: 1
+  semantic:
+    producer:
+      name: semantic-rails
+      version: 0.2.0
+    packages:
+      - package_id: semantic_fixture
+        namespace: semantic_fixture
+        package_schema_version: 1
+        semantic_hash: sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        resources:
+          - semantic_model_id: customers
+            columns:
+              - name: definitely_missing_customer_column
+                required_by: ["test.intentional_failure"]
+  binding:
+    kind: sqlmesh
+    binding_version: 1
+    packages:
+      - package_id: semantic_fixture
+        policy:
+          severity: error
+        resources:
+          - semantic_model_id: customers
+            sqlmesh_model: semantic_rails.customers

@@ -2,3 +2,8 @@ schema_version: 1
 package:
   id: semantic_fixture
   namespace: semantic_fixture
+  warehouse: duckdb
+  default_db: data/semantic_fixture.duckdb
+  seed:
+    kind: csv_dir_duckdb
+    source: data

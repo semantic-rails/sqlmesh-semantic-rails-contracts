@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0
+
+- Makes the engine the sole semantic contract and fingerprint producer.
+- Separates `contract_format_version` from SQLMesh `binding_version`.
+- Adds schema-parity validation for versions, producers, package/resource
+  identity, hashes, unknown fields, duplicates, and one-to-one coverage.
+- Adds public canonical, binding, composed-contract, and specialized
+  validation-report schemas with an offline schema accessor.
+- Adds `ValidationReportV1` for agent and CI consumers.
+- Keeps legacy payloads readable during the 0.2 transition while emitting only v1.
+- Adds a machine-readable compatibility manifest and immutable schema baseline.
+- Adds minimum/latest SQLMesh compatibility plus build-once, exact-byte,
+  provenance-producing Trusted Publishing automation.
+
 ## 0.1.0
 
 Initial public release candidate.

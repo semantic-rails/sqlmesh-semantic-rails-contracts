@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://semantic-rails.com/schemas/sqlmesh_contract.v1.json",
+  "title": "SQLMesh Semantic Rails validation contract (v1)",
+  "allOf": [
+    {
+      "$ref": "https://semantic-rails.com/schemas/semantic_contract.v1.json"
+    },
+    {
+      "type": "object",
+      "required": ["binding"],
+      "properties": {
+        "binding": {
+          "$ref": "https://semantic-rails.com/schemas/sqlmesh_binding.v1.json"
+        }
+      }
+    }
+  ]
+}
