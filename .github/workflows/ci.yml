@@ -15,8 +15,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  metadata:
+    name: Contract and release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      engine_release_state: ${{ steps.compatibility.outputs.engine_release_state }}
+      engine_candidate_sha: ${{ steps.compatibility.outputs.engine_candidate_sha }}
+      engine_minimum_spec: ${{ steps.compatibility.outputs.engine_minimum_spec }}
+      engine_compatible_spec: ${{ steps.compatibility.outputs.engine_compatible_spec }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Verify machine-readable compatibility metadata
+        id: compatibility
+        run: |
+          python scripts/verify_release_metadata.py \
+            --github-output "${GITHUB_OUTPUT}"
+          python scripts/check_schema_compatibility.py
+
   integration:
     name: SQLMesh ${{ matrix.line }} (py${{ matrix.python-version }})
+    needs: metadata
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -26,29 +47,64 @@ jobs:
             python-version: "3.10"
             sqlmesh-spec: "sqlmesh==0.235.2"
             export-tests: "false"
-            engine-spec: ""
+            engine-selection: "none"
           - line: current
             python-version: "3.11"
             sqlmesh-spec: "sqlmesh>=0.235.2,<1.0"
             export-tests: "true"
-            engine-spec: "semantic-rails>=0.2,<0.3"
+            engine-selection: "compatible"
           - line: newest
             python-version: "3.12"
             sqlmesh-spec: "sqlmesh>=0.235.2,<1.0"
             export-tests: "true"
-            engine-spec: "semantic-rails>=0.2,<0.3"
+            engine-selection: "compatible"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Check out the exact approved engine candidate
+        if: matrix.engine-selection != 'none' && needs.metadata.outputs.engine_release_state == 'candidate'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: semantic-rails/semantic-rails
+          ref: ${{ needs.metadata.outputs.engine_candidate_sha }}
+          path: .contract-engine
+      - name: Verify the exact approved engine candidate
+        if: matrix.engine-selection != 'none' && needs.metadata.outputs.engine_release_state == 'candidate'
+        env:
+          EXPECTED_SHA: ${{ needs.metadata.outputs.engine_candidate_sha }}
+        run: |
+          RESOLVED_SHA="$(git -C .contract-engine rev-parse HEAD)"
+          test "$(git -C .contract-engine status --porcelain)" = ""
+          if [[ "${RESOLVED_SHA}" != "${EXPECTED_SHA}" ]]; then
+            echo "Resolved engine checkout ${RESOLVED_SHA} does not match ${EXPECTED_SHA}." >&2
+            exit 1
+          fi
       - name: Install uv
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: false
+      - name: Build the exact approved engine candidate
+        if: matrix.engine-selection != 'none' && needs.metadata.outputs.engine_release_state == 'candidate'
+        env:
+          EXPECTED_SPEC: ${{ needs.metadata.outputs.engine_minimum_spec }}
+        run: |
+          uv build --wheel --out-dir .engine-dist .contract-engine
+          ENGINE_WHEEL="$(find .engine-dist -maxdepth 1 -name 'semantic_rails-*.whl' -print -quit)"
+          test -n "${ENGINE_WHEEL}"
+          ENGINE_WHEEL="${GITHUB_WORKSPACE}/${ENGINE_WHEEL}"
+          uv run --no-project --with "${ENGINE_WHEEL}" python -c \
+            'from importlib.metadata import version; import os; assert "semantic-rails==" + version("semantic-rails") == os.environ["EXPECTED_SPEC"]'
+          echo "SEMANTIC_RAILS_ENGINE_SPEC=${ENGINE_WHEEL}" >> "${GITHUB_ENV}"
+          sha256sum "${ENGINE_WHEEL}" >> "${GITHUB_STEP_SUMMARY}"
+      - name: Select the released engine artifact
+        if: matrix.engine-selection != 'none' && needs.metadata.outputs.engine_release_state == 'released'
+        env:
+          ENGINE_SPEC: ${{ needs.metadata.outputs.engine_compatible_spec }}
+        run: echo "SEMANTIC_RAILS_ENGINE_SPEC=${ENGINE_SPEC}" >> "${GITHUB_ENV}"
       - name: Run integration tests
         env:
-          SEMANTIC_RAILS_ENGINE_SPEC: ${{ matrix.engine-spec }}
           SQLMESH_SPEC: ${{ matrix.sqlmesh-spec }}
           EXPORT_TESTS: ${{ matrix.export-tests }}
         run: ./scripts/run_integration_tests.sh
@@ -56,10 +112,13 @@ jobs:
   all-checks:
     name: All checks pass
     if: ${{ always() }}
-    needs: integration
+    needs: [metadata, integration]
     runs-on: ubuntu-latest
     steps:
       - name: Require the compatibility matrix
         env:
-          RESULT: ${{ needs.integration.result }}
-        run: test "$RESULT" = success
+          METADATA_RESULT: ${{ needs.metadata.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: |
+          test "$METADATA_RESULT" = success
+          test "$INTEGRATION_RESULT" = success

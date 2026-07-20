@@ -18,7 +18,14 @@ if [[ "${USE_ACTIVE_ENV:-false}" == "true" ]]; then
     python -c "from semantic_rails.contracts import export_semantic_contract"
   fi
 elif command -v uv >/dev/null 2>&1; then
-  UV_ARGS=(--project "${ROOT_DIR}" --extra dev)
+  UV_ARGS=(
+    --no-project
+    --with-editable "${ROOT_DIR}"
+    --with "pytest>=8.0"
+    --with "ruff>=0.6"
+    --with "jsonschema>=4.26"
+    --with "tomli>=2.0; python_version < '3.11'"
+  )
   if [[ "${EXPORT_TESTS:-true}" == "true" ]]; then
     if [[ -n "${SEMANTIC_RAILS_ENGINE_PATH:-}" ]]; then
       UV_ARGS+=(--with-editable "${SEMANTIC_RAILS_ENGINE_PATH}")
@@ -86,7 +93,7 @@ run_success "contract unit tests" "${PYTHON[@]}" -m pytest -q "${ROOT_DIR}/tests
 run_success "ruff lint" "${PYTHON[@]}" -m ruff check "${ROOT_DIR}/src" "${ROOT_DIR}/tests" "${ROOT_DIR}/scripts"
 run_success "ruff format" "${PYTHON[@]}" -m ruff format --check "${ROOT_DIR}/src" "${ROOT_DIR}/tests" "${ROOT_DIR}/scripts"
 run_success "schema compatibility" "${PYTHON[@]}" "${ROOT_DIR}/scripts/check_schema_compatibility.py"
-run_success "release metadata" "${PYTHON[@]}" "${ROOT_DIR}/scripts/verify_release_metadata.py" --allow-placeholder-engine-sha
+run_success "release metadata" "${PYTHON[@]}" "${ROOT_DIR}/scripts/verify_release_metadata.py"
 run_success "cli help" "${CLI[@]}" --help
 run_success "sqlmesh project info" "${SQLMESH[@]}" --paths "${BASIC_DIR}" info
 if [[ "${EXPORT_TESTS:-true}" == "true" ]]; then
@@ -153,7 +160,7 @@ run_failure "extra column disallowed" "SQLMESH_COLUMN_EXTRA" "${CLI[@]}" check -
 
 if [[ "${SKIP_PACKAGE_BUILD:-false}" != "true" ]]; then
   if command -v uv >/dev/null 2>&1; then
-    run_success "package build" uv run --project "${ROOT_DIR}" --with build python -m build "${ROOT_DIR}" --outdir "${ROOT_DIR}/target/dist"
+    run_success "package build" uv run --no-project --with build python -m build "${ROOT_DIR}" --outdir "${ROOT_DIR}/target/dist"
   else
     run_success "package build" "${PYTHON[@]}" -m build "${ROOT_DIR}" --outdir "${ROOT_DIR}/target/dist"
   fi

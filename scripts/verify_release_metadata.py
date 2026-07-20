@@ -17,6 +17,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 ROOT = Path(__file__).resolve().parent.parent
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+ENGINE_RELEASE_STATES = {"candidate", "released"}
 
 
 def _dependency_matches(rows: list[str], name: str, specifier: str) -> bool:
@@ -67,13 +68,21 @@ def _resolve_local_commit(ref: str) -> str:
     return result.stdout.strip()
 
 
+def _append_github_values(path: Path, rows: dict[str, str]) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        for key, value in rows.items():
+            if "\n" in value or "\r" in value:
+                raise SystemExit(f"GitHub output {key} must be a single line.")
+            handle.write(f"{key}={value}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", default=None)
     parser.add_argument("--verify-adapter-tag", action="store_true")
     parser.add_argument("--verify-engine-tag", action="store_true")
-    parser.add_argument("--allow-placeholder-engine-sha", action="store_true")
     parser.add_argument("--github-env", type=Path, default=None)
+    parser.add_argument("--github-output", type=Path, default=None)
     args = parser.parse_args(argv)
 
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
@@ -81,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     distribution = manifest["distribution"]
     engine = manifest["engine"]
     sqlmesh = manifest["sqlmesh"]
+    release_state = engine.get("release_state")
 
     version = str(project["version"])
     if distribution["name"] != project["name"] or distribution["version"] != version:
@@ -89,6 +99,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("compatibility.json Python requirement must match pyproject.toml.")
     if args.tag is not None and args.tag != f"v{version}":
         raise SystemExit(f"Release tag {args.tag} does not match package version v{version}.")
+    if engine.get("name") != "semantic-rails":
+        raise SystemExit("compatibility.json engine.name must be semantic-rails.")
+    if release_state not in ENGINE_RELEASE_STATES:
+        raise SystemExit("compatibility.json engine.release_state must be candidate or released.")
     adapter_source_sha: str | None = None
     if args.verify_adapter_tag:
         if args.tag is None:
@@ -134,13 +148,15 @@ def main(argv: list[str] | None = None) -> int:
 
     candidate_sha = engine.get("engine_candidate_sha")
     candidate_ready = isinstance(candidate_sha, str) and SHA_RE.fullmatch(candidate_sha) is not None
-    if not candidate_ready and not args.allow_placeholder_engine_sha:
-        raise SystemExit(
-            "compatibility.json engine.engine_candidate_sha is still a placeholder; "
-            "fill it with the exact public engine commit before release."
-        )
+    if not candidate_ready:
+        raise SystemExit(f"Engine release_state {release_state} requires an exact engine_candidate_sha.")
     resolved_engine_sha: str | None = None
     if args.verify_engine_tag:
+        if release_state != "released":
+            raise SystemExit(
+                "Set compatibility.json engine.release_state to released only "
+                "after the approved engine artifact is on PyPI."
+            )
         if not candidate_ready:
             raise SystemExit("Cannot verify the engine tag until engine_candidate_sha is filled.")
         resolved_engine_sha = _resolve_remote_tag(str(engine["repository"]), str(engine["tag"]))
@@ -149,18 +165,27 @@ def main(argv: list[str] | None = None) -> int:
                 f"Engine tag {engine['tag']} resolves to {resolved_engine_sha}, not approved candidate {candidate_sha}."
             )
 
+    engine_values = {
+        "ENGINE_RELEASE_STATE": str(release_state),
+        "ENGINE_VERSION": str(engine["version"]),
+        "ENGINE_CANDIDATE_SHA": str(candidate_sha or ""),
+        "ENGINE_MINIMUM_SPEC": f"{engine['name']}=={engine['version']}",
+        "ENGINE_COMPATIBLE_SPEC": f"{engine['name']}{engine['specifier']}",
+    }
     if args.github_env is not None:
         rows = {
             "ADAPTER_VERSION": version,
             "ADAPTER_SOURCE_SHA": str(adapter_source_sha or ""),
-            "ENGINE_VERSION": str(engine["version"]),
             "ENGINE_TAG": str(engine["tag"]),
-            "ENGINE_CANDIDATE_SHA": str(candidate_sha or ""),
             "SQLMESH_RELEASE_TEST_VERSION": str(sqlmesh["release_test_version"]),
+            **engine_values,
         }
-        with args.github_env.open("a", encoding="utf-8") as handle:
-            for key, value in rows.items():
-                handle.write(f"{key}={value}\n")
+        _append_github_values(args.github_env, rows)
+    if args.github_output is not None:
+        _append_github_values(
+            args.github_output,
+            {key.lower(): value for key, value in engine_values.items()},
+        )
 
     print(
         json.dumps(
@@ -175,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
                 "engine": {
                     "version": engine["version"],
                     "tag": engine["tag"],
+                    "release_state": release_state,
                     "engine_candidate_sha": candidate_sha,
                     "candidate_ready": candidate_ready,
                     "resolved_tag_sha": resolved_engine_sha,

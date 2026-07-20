@@ -127,8 +127,13 @@ minor release may add support for additive semantic fields. A new contract or
 binding major requires dual-read support before an engine starts emitting it.
 
 CI tests SQLMesh `0.235.2` exactly as the oldest supported release and the
-newest release allowed by the public specifier. A scheduled engine-main canary
-is advisory; released engine artifacts remain authoritative.
+newest release allowed by the public specifier. While `compatibility.json`
+declares the engine `release_state` as `candidate`, export lanes build only the
+exact approved `engine_candidate_sha`. After that commit is tagged and
+published, maintainers change the state to `released`; required CI then
+resolves `semantic-rails>=0.2,<0.3` from PyPI with no source fallback. A
+scheduled engine-main canary is advisory; released engine artifacts remain
+authoritative.
 [`compatibility.json`](compatibility.json) records the released dependency and
 contract identities, and the immutable v1 baseline under
 [`compatibility/baseline/v1/`](compatibility/baseline/v1/) gates incompatible

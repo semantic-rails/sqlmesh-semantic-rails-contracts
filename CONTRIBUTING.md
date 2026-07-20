@@ -29,12 +29,14 @@ Before proposing a release, run:
 
 ```shell
 python scripts/check_schema_compatibility.py
-python scripts/verify_release_metadata.py --allow-placeholder-engine-sha
+python scripts/verify_release_metadata.py
 ```
 
-The placeholder flag is for ordinary pre-release CI only. A release requires
-`compatibility.json` to contain the exact engine candidate commit and verifies
-that the public engine tag dereferences to that commit.
+An exact candidate commit is required once the adapter declares an engine
+lifecycle state. Required CI uses `engine.release_state`: `candidate` builds the
+exact approved commit, while `released` requires the declared PyPI specifier
+without a source fallback. An adapter release requires `released` and a public
+engine tag that dereferences to the recorded commit.
 
 Do not commit generated SQLMesh state, db files, logs, target directories, or
 virtual environments.
