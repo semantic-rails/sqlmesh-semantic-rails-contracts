@@ -11,8 +11,8 @@ import pytest
 import yaml
 from referencing import Registry, Resource
 
-from semantic_rails_contracts_core.contracts import contract_resources, load_contract_file
 from sqlmesh_semantic_rails_contracts import SCHEMA_NAMES, load_schema
+from sqlmesh_semantic_rails_contracts._contracts import contract_resources, load_contract_file
 from sqlmesh_semantic_rails_contracts.checker import check_project
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -191,7 +191,7 @@ def test_explicit_null_contract_wrapper_is_rejected(tmp_path: Path) -> None:
 
 
 def test_report_metadata_can_describe_unsupported_and_malformed_versions() -> None:
-    from semantic_rails_contracts_core.contracts import contract_metadata
+    from sqlmesh_semantic_rails_contracts._contracts import contract_metadata
 
     unsupported = _spec()
     unsupported["contract_format_version"] = 2
@@ -307,7 +307,7 @@ def test_packaged_schema_accessor_loads_complete_offline_registry() -> None:
 
 
 def test_engine_export_contains_only_physical_source_columns() -> None:
-    from semantic_rails_contracts_core.exporter import (
+    from sqlmesh_semantic_rails_contracts.exporter import (
         SemanticRailsProducerUnavailable,
         export_semantic_contract,
     )
@@ -331,3 +331,24 @@ def test_engine_export_contains_only_physical_source_columns() -> None:
         "order_id",
         "ordered_at",
     }
+
+
+def test_export_selects_matching_packages_and_rejects_missing_models(monkeypatch, capsys) -> None:
+    from sqlmesh_semantic_rails_contracts import cli, exporter
+
+    neutral = _spec()
+    neutral.pop("binding")
+    unselected = deepcopy(neutral["semantic"]["packages"][0])
+    unselected["package_id"] = "unselected_package"
+    unselected["resources"] = [{"semantic_model_id": "other", "columns": []}]
+    neutral["semantic"]["packages"].append(unselected)
+    monkeypatch.setattr(exporter, "export_semantic_contract", lambda _: deepcopy(neutral))
+
+    assert cli.main(["export", ".", "--include-model", "customers"]) == 0
+    payload = yaml.safe_load(capsys.readouterr().out)["semantic_rails_contracts"]
+    assert [p["package_id"] for p in payload["semantic"]["packages"]] == ["semantic_fixture"]
+    assert [p["package_id"] for p in payload["binding"]["packages"]] == ["semantic_fixture"]
+    assert contract_resources(payload)[0] == []
+    _local_composed_validator().validate(payload)
+    with pytest.raises(ValueError, match="Included models were not found"):
+        cli.main(["export", ".", "--include-model", "absent"])

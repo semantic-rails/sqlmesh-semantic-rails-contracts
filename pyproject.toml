@@ -50,7 +50,7 @@ dev = [
 semantic-rails-sqlmesh-contracts = "sqlmesh_semantic_rails_contracts.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/semantic_rails_contracts_core", "src/sqlmesh_semantic_rails_contracts"]
+packages = ["src/sqlmesh_semantic_rails_contracts"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "sqlmesh_semantic_rails_contracts/schemas"

@@ -6,10 +6,14 @@ Run the full local matrix against an engine checkout before opening a change:
 SEMANTIC_RAILS_ENGINE_PATH=../semantic-rails ./scripts/run_integration_tests.sh
 ```
 
-The engine owns semantic contract fields and fingerprints. Never add raw
+The engine owns semantic contract fields and fingerprints. This adapter owns
+its Python package, native SQLMesh graph checks, and binding schema. The private
+`_contracts` module is an implementation detail of this adapter, not a shared
+engine contract authority. Runtime checks remain engine-independent; only
+optional authoring/export imports the public engine producer. Never add raw
 Semantic Rails YAML parsing or hashing here. SQLMesh binding changes update:
 
-- `src/semantic_rails_contracts_core/contracts.py`
+- `src/sqlmesh_semantic_rails_contracts/_contracts.py`
 - `src/sqlmesh_semantic_rails_contracts/exporter.py`
 - `schemas/sqlmesh_binding.v1.json`
 - `compatibility/baseline/v1/sqlmesh_binding.v1.json` only when establishing a

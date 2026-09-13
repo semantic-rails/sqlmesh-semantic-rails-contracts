@@ -6,15 +6,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from semantic_rails_contracts_core import (
+from . import __version__
+from ._contracts import (
+    REPORT_FORMAT_VERSION,
     collect_contract_issues,
     contract_metadata,
     contract_summary,
     load_contract_file,
 )
-from semantic_rails_contracts_core.contracts import REPORT_FORMAT_VERSION
-
-from . import __version__
 from .sqlmesh_adapter import load_sqlmesh_snapshots
 
 
@@ -36,13 +35,7 @@ def check_project(
         else load_contract_file(contract_file or project_dir / "semantic_rails_contract.yml")
     )
     snapshots = load_sqlmesh_snapshots(project_dir, gateway=gateway)
-    issues = collect_contract_issues(
-        spec,
-        snapshots,
-        framework="SQLMesh",
-        not_found_code="SQLMESH_MODEL_NOT_FOUND",
-        ambiguous_code="SQLMESH_MODEL_AMBIGUOUS",
-    )
+    issues = collect_contract_issues(spec, snapshots)
     model_count = len({snapshot.name for snapshot in snapshots.values()})
     errors, warnings = split_issues([issue.to_dict() for issue in issues])
     return {
