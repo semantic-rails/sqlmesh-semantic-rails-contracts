@@ -44,3 +44,9 @@ engine tag that dereferences to the recorded commit.
 
 Do not commit generated SQLMesh state, db files, logs, target directories, or
 virtual environments.
+
+The optional engine-backed conformance lane loads the versioned metric
+portability corpus from the installed engine wheel and checks the resulting
+validation binding against the native framework graph. Keep this corpus in the
+engine; do not copy it into this repository or add engine imports to native
+runtime validation.

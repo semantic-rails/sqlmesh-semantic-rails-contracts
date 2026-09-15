@@ -7,12 +7,12 @@
   },
   "engine": {
     "name": "semantic-rails",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "specifier": ">=0.2,<0.3",
-    "release_state": "candidate",
+    "release_state": "released",
     "repository": "https://github.com/semantic-rails/semantic-rails.git",
-    "tag": "v0.2.0",
-    "engine_candidate_sha": "d071e8349e370d848ed3bf009b70242f1477900c"
+    "tag": "v0.2.1",
+    "engine_candidate_sha": "245f47df1c91799e69e3789348528e7c71dc2e7c"
   },
   "sqlmesh": {
     "specifier": ">=0.235.2,<1.0",
