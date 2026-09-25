@@ -10,6 +10,8 @@ updates:
     groups:
       pip-compatible:
         update-types: [minor, patch]
+      pip-major:
+        update-types: [major]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -18,3 +20,5 @@ updates:
     groups:
       github-actions-compatible:
         update-types: [minor, patch]
+      github-actions-major:
+        update-types: [major]
