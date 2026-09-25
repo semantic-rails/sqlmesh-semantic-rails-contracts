@@ -8,12 +8,46 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from semantic_rails_contracts_core.exporter import (
-    export_semantic_contract,
-    parse_model_map,
-)
-
 from . import __version__
+
+
+class SemanticRailsProducerUnavailable(RuntimeError):
+    """Raised when the optional engine export surface is not installed."""
+
+
+def export_semantic_contract(package_path: str | Path) -> dict[str, Any]:
+    try:
+        from semantic_rails.contracts import export_semantic_contract as engine_export
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise SemanticRailsProducerUnavailable(
+            "Contract export requires semantic-rails>=0.3,<0.4. "
+            "Install sqlmesh-semantic-rails-contracts[export], or generate the "
+            "neutral semantic contract with the semantic-rails CLI."
+        ) from exc
+
+    payload = engine_export(Path(package_path).expanduser().resolve())
+    if not isinstance(payload, Mapping):
+        raise RuntimeError("Semantic Rails contract producer returned a non-mapping payload.")
+    root = payload.get("semantic_rails_contracts", payload)
+    if not isinstance(root, Mapping):
+        raise RuntimeError("Semantic Rails contract producer returned an invalid root payload.")
+    out = deepcopy(dict(root))
+    if out.get("contract_format_version") != 1 or not isinstance(out.get("semantic"), Mapping):
+        raise RuntimeError(
+            "Semantic Rails contract producer returned an unsupported contract format; "
+            "expected contract_format_version 1."
+        )
+    return out
+
+
+def parse_model_map(values: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for value in values:
+        left, sep, right = value.partition("=")
+        if not sep or not left.strip() or not right.strip():
+            raise ValueError(f"Invalid mapping {value!r}; expected semantic_model=target_model")
+        out[left.strip()] = right.strip()
+    return out
 
 
 def _binding_resource(
@@ -63,6 +97,7 @@ def build_sqlmesh_contract(args: Namespace) -> dict[str, Any]:
     include = set(args.include_model or [])
     seen_models: set[str] = set()
     binding_packages: list[dict[str, Any]] = []
+    selected_packages: list[dict[str, Any]] = []
 
     for semantic_package in semantic_packages:
         if not isinstance(semantic_package, dict):
@@ -84,7 +119,10 @@ def build_sqlmesh_contract(args: Namespace) -> dict[str, Any]:
             seen_models.add(model_id)
             selected_resources.append(deepcopy(dict(raw_resource)))
             binding_resources.append(_binding_resource(raw_resource, args=args, model_map=model_map))
+        if include and not selected_resources:
+            continue
         semantic_package["resources"] = selected_resources
+        selected_packages.append(semantic_package)
         digest = str(semantic_package.get("semantic_hash") or "")
         binding_packages.append(
             {
@@ -108,6 +146,7 @@ def build_sqlmesh_contract(args: Namespace) -> dict[str, Any]:
     if missing_includes:
         raise ValueError("Included models were not found in the semantic contract: " + ", ".join(missing_includes))
 
+    semantic["packages"] = selected_packages
     contract["semantic"] = semantic
     contract["binding"] = {
         "kind": "sqlmesh",

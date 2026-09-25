@@ -82,8 +82,7 @@ run_failure() {
 mkdir -p "${ROOT_DIR}/target"
 
 run_success "python compile" "${PYTHON[@]}" -m py_compile \
-  "${ROOT_DIR}/src/semantic_rails_contracts_core/contracts.py" \
-  "${ROOT_DIR}/src/semantic_rails_contracts_core/exporter.py" \
+  "${ROOT_DIR}/src/sqlmesh_semantic_rails_contracts/_contracts.py" \
   "${ROOT_DIR}/src/sqlmesh_semantic_rails_contracts/checker.py" \
   "${ROOT_DIR}/src/sqlmesh_semantic_rails_contracts/cli.py" \
   "${ROOT_DIR}/src/sqlmesh_semantic_rails_contracts/exporter.py" \
@@ -111,7 +110,7 @@ if [[ "${EXPORT_TESTS:-true}" == "true" ]]; then
   fi
 fi
 run_success "core expression and type checks" "${PYTHON[@]}" - <<'PY'
-from semantic_rails_contracts_core.contracts import types_match
+from sqlmesh_semantic_rails_contracts._contracts import types_match
 assert types_match("varchar", "VARCHAR(255)", "compatible")
 assert types_match("numeric", "DECIMAL(10, 2)", "compatible")
 assert types_match("timestamp", "TIMESTAMP WITH TIME ZONE", "compatible")

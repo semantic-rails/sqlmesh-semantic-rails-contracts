@@ -1,4 +1,4 @@
-"""Framework-neutral contract parsing and validation primitives."""
+"""SQLMesh-owned contract parsing, binding validation, and resource checks."""
 
 from __future__ import annotations
 
@@ -1231,23 +1231,16 @@ def normalize_compatible_type(value: str | None) -> str:
 def collect_contract_issues(
     spec: Mapping[str, Any],
     snapshots: Mapping[str, ResourceSnapshot],
-    *,
-    framework: str,
-    not_found_code: str,
-    ambiguous_code: str,
 ) -> list[ContractIssue]:
     issues, resources = contract_resources(spec)
     for resource in resources:
-        issues.extend(validate_resource(resource, snapshots, framework, not_found_code, ambiguous_code))
+        issues.extend(validate_resource(resource, snapshots))
     return issues
 
 
 def validate_resource(
     resource: ContractResource,
     snapshots: Mapping[str, ResourceSnapshot],
-    framework: str,
-    not_found_code: str,
-    ambiguous_code: str,
 ) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
     target_name = resource.target_name
@@ -1258,27 +1251,26 @@ def validate_resource(
     if not candidates:
         return [
             ContractIssue(
-                not_found_code,
+                "SQLMESH_MODEL_NOT_FOUND",
                 resource.severity,
                 resource.package_id,
                 resource.semantic_model_id,
-                f"Expected {framework} model {resource.target_name} was not found.",
+                f"Expected SQLMesh model {resource.target_name} was not found.",
             )
         ]
     if len(candidates) > 1:
         return [
             ContractIssue(
-                ambiguous_code,
+                "SQLMESH_MODEL_AMBIGUOUS",
                 resource.severity,
                 resource.package_id,
                 resource.semantic_model_id,
-                f"Expected {framework} model {resource.target_name} matched multiple models. "
-                "Use a fully qualified name.",
+                f"Expected SQLMesh model {resource.target_name} matched multiple models. Use a fully qualified name.",
             )
         ]
     snapshot = candidates[0]
-    issues.extend(validate_metadata(resource, snapshot, framework))
-    issues.extend(validate_columns(resource, snapshot, framework))
+    issues.extend(validate_metadata(resource, snapshot))
+    issues.extend(validate_columns(resource, snapshot))
     return issues
 
 
@@ -1329,7 +1321,7 @@ def unique_snapshots(snapshots: Iterable[ResourceSnapshot]) -> list[ResourceSnap
     return out
 
 
-def validate_metadata(resource: ContractResource, snapshot: ResourceSnapshot, framework: str) -> list[ContractIssue]:
+def validate_metadata(resource: ContractResource, snapshot: ResourceSnapshot) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
     pairs = {
         "project": ("sqlmesh_project", "project"),
@@ -1352,7 +1344,7 @@ def validate_metadata(resource: ContractResource, snapshot: ResourceSnapshot, fr
                     resource.severity,
                     resource.package_id,
                     resource.semantic_model_id,
-                    f"Expected {framework} {field_name} {expected}, found {actual}.",
+                    f"Expected SQLMesh {field_name} {expected}, found {actual}.",
                 )
             )
 
@@ -1364,7 +1356,7 @@ def validate_metadata(resource: ContractResource, snapshot: ResourceSnapshot, fr
                 resource.severity,
                 resource.package_id,
                 resource.semantic_model_id,
-                f"Expected {framework} tag {tag} is missing.",
+                f"Expected SQLMesh tag {tag} is missing.",
             )
         )
 
@@ -1388,7 +1380,7 @@ def validate_metadata(resource: ContractResource, snapshot: ResourceSnapshot, fr
                 resource.severity,
                 resource.package_id,
                 resource.semantic_model_id,
-                f"Expected {framework} audit {audit} is missing.",
+                f"Expected SQLMesh audit {audit} is missing.",
             )
         )
 
@@ -1423,7 +1415,7 @@ def metadata_issue_code(field_name: str) -> str:
     return f"SQLMESH_{field_name.upper()}_MISMATCH"
 
 
-def validate_columns(resource: ContractResource, snapshot: ResourceSnapshot, framework: str) -> list[ContractIssue]:
+def validate_columns(resource: ContractResource, snapshot: ResourceSnapshot) -> list[ContractIssue]:
     issues: list[ContractIssue] = []
     actual_columns = columns_by_name(snapshot.columns)
     expected = resource.columns
@@ -1443,7 +1435,7 @@ def validate_columns(resource: ContractResource, snapshot: ResourceSnapshot, fra
         key = str(name).lower()
         if key not in actual_columns:
             reasons = ", ".join(str(value) for value in as_list(column.get("required_by")))
-            detail = f"Missing {framework} column {name} required by Semantic Rails model {resource.semantic_model_id}"
+            detail = f"Missing SQLMesh column {name} required by Semantic Rails model {resource.semantic_model_id}"
             if reasons:
                 detail += f" ({reasons})"
             issues.append(
@@ -1478,7 +1470,7 @@ def validate_columns(resource: ContractResource, snapshot: ResourceSnapshot, fra
                         resource.severity,
                         resource.package_id,
                         resource.semantic_model_id,
-                        f"{framework} column {actual_name} is not listed in the Semantic Rails contract "
+                        f"SQLMesh column {actual_name} is not listed in the Semantic Rails contract "
                         "and allow_extra_columns is false.",
                     )
                 )

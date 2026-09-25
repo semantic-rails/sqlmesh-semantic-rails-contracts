@@ -131,7 +131,7 @@ newest release allowed by the public specifier. While `compatibility.json`
 declares the engine `release_state` as `candidate`, export lanes build only the
 exact approved `engine_candidate_sha`. After that commit is tagged and
 published, maintainers change the state to `released`; required CI then
-resolves `semantic-rails>=0.2,<0.3` from PyPI with no source fallback. A
+resolves `semantic-rails>=0.3,<0.4` from PyPI with no source fallback. A
 scheduled engine-main canary is advisory; released engine artifacts remain
 authoritative.
 [`compatibility.json`](compatibility.json) records the released dependency and

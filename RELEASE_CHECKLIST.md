@@ -22,7 +22,7 @@ Before tagging a public release:
 11. Confirm a missing-column payload fails with `SQLMESH_COLUMN_MISSING`.
 12. Confirm matrix mode across at least two SQLMesh projects or gateways.
 13. Run available live gateway smoke checks.
-14. Verify required CI passes against `semantic-rails>=0.2,<0.3` from public
+14. Verify required CI passes against `semantic-rails>=0.3,<0.4` from public
     PyPI. Released mode never falls back to source, and required CI never
     consumes engine `main`.
 15. Verify the adapter tag exactly matches `pyproject.toml` and

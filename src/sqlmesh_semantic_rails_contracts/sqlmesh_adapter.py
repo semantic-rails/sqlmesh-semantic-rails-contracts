@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from semantic_rails_contracts_core import ResourceSnapshot
+from ._contracts import ResourceSnapshot
 
 
 def load_sqlmesh_snapshots(project_dir: Path, gateway: str | None = None) -> dict[str, ResourceSnapshot]:

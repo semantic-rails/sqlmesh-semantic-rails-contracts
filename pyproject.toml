@@ -37,7 +37,7 @@ Issues = "https://github.com/semantic-rails/sqlmesh-semantic-rails-contracts/iss
 
 [project.optional-dependencies]
 export = [
-  "semantic-rails>=0.2,<0.3; python_version >= '3.11'"
+  "semantic-rails>=0.3,<0.4; python_version >= '3.11'"
 ]
 dev = [
   "pytest>=8.0",
@@ -50,7 +50,7 @@ dev = [
 semantic-rails-sqlmesh-contracts = "sqlmesh_semantic_rails_contracts.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/semantic_rails_contracts_core", "src/sqlmesh_semantic_rails_contracts"]
+packages = ["src/sqlmesh_semantic_rails_contracts"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "sqlmesh_semantic_rails_contracts/schemas"

@@ -1,6 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- The `export` extra and the engine-backed CI lanes require
+  `semantic-rails>=0.3,<0.4` (engine 0.3.0).
+
 ## 0.2.0
+
+- Consolidates SQLMesh-only validation and export into the adapter package;
+  removes the unreleased `semantic_rails_contracts_core` implementation namespace.
+  The CLI, schema accessor, wire contracts, and engine-free runtime are unchanged.
+- Omits unselected packages during filtered export so multi-package
+  `--include-model` output remains a valid semantic/binding contract.
 
 - Makes the engine the sole semantic contract and fingerprint producer.
 - Separates `contract_format_version` from SQLMesh `binding_version`.
