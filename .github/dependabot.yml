@@ -8,6 +8,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # sqlmesh is the product surface: its updates get their own PR. A dependency joins the first group it matches.
+      sqlmesh:
+        patterns: ["sqlmesh"]
       pip-compatible:
         update-types: [minor, patch]
       pip-major:
