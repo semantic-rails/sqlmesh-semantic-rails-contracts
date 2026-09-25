@@ -20,7 +20,7 @@ def export_semantic_contract(package_path: str | Path) -> dict[str, Any]:
         from semantic_rails.contracts import export_semantic_contract as engine_export
     except (ImportError, ModuleNotFoundError) as exc:
         raise SemanticRailsProducerUnavailable(
-            "Contract export requires Semantic Rails 0.2 or newer. "
+            "Contract export requires semantic-rails>=0.3,<0.4. "
             "Install sqlmesh-semantic-rails-contracts[export], or generate the "
             "neutral semantic contract with the semantic-rails CLI."
         ) from exc
