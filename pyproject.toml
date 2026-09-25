@@ -37,7 +37,7 @@ Issues = "https://github.com/semantic-rails/sqlmesh-semantic-rails-contracts/iss
 
 [project.optional-dependencies]
 export = [
-  "semantic-rails>=0.2,<0.3; python_version >= '3.11'"
+  "semantic-rails>=0.3,<0.4; python_version >= '3.11'"
 ]
 dev = [
   "pytest>=8.0",

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The `export` extra and the engine-backed CI lanes require
+  `semantic-rails>=0.3,<0.4` (engine 0.3.0).
+
 ## 0.2.0
 
 - Consolidates SQLMesh-only validation and export into the adapter package;
