@@ -24,7 +24,7 @@ jobs:
       engine_minimum_spec: ${{ steps.compatibility.outputs.engine_minimum_spec }}
       engine_compatible_spec: ${{ steps.compatibility.outputs.engine_compatible_spec }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -59,13 +59,13 @@ jobs:
             export-tests: "true"
             engine-selection: "compatible"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Check out the exact approved engine candidate
         if: matrix.engine-selection != 'none' && needs.metadata.outputs.engine_release_state == 'candidate'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: semantic-rails/semantic-rails
           ref: ${{ needs.metadata.outputs.engine_candidate_sha }}

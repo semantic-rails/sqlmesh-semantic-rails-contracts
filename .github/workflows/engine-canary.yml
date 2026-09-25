@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.event_name == 'schedule' }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Require an immutable manual candidate identity
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -34,7 +34,7 @@ jobs:
             exit 1
           fi
       - name: Check out engine candidate
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: semantic-rails/semantic-rails
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.engine_sha || 'main' }}
