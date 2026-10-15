@@ -4,6 +4,13 @@
 
 - The `export` extra and the engine-backed CI lanes require
   `semantic-rails>=0.3,<0.4` (engine 0.3.0).
+- The metric portability test exports an authored package
+  (`integration_tests/portable_customers`) checked against the engine corpus's
+  package identity and metric IDs, instead of translating the corpus with the
+  MetricFlow importer that engine 0.3.2 removes. The export fixture uses the
+  package shapes engine 0.3.2 requires (list entity keys, one model per
+  `model:` file, no ignored `grain`, `agg` or dimension `expr` keys); engine
+  0.3.0 loads them too.
 
 ## 0.2.0
 

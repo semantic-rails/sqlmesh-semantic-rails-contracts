@@ -1,23 +1,19 @@
-models:
-  revenue:
-    relation: semantic_rails.orders
-    grain: [order_id]
-    entities:
-      revenue: {}
-      customer:
-        expr: orders.customer_id
-    dimensions:
-      order_month:
-        expr:
-          kind: column
-          column: ordered_at
-    measures:
-      revenue:
-        kind: aggregate
-        expr:
-          kind: column
-          column: order_amount
-        agg: sum
-      distinct_customers:
-        kind: entity_count
-        entity_key: customer_id
+model:
+  id: revenue
+  relation: semantic_rails.orders
+  entities:
+    revenue: {}
+    customer:
+      expr: orders.customer_id
+  dimensions:
+    order_month:
+      column: ordered_at
+  measures:
+    revenue:
+      kind: aggregate
+      expr:
+        kind: column
+        column: order_amount
+    distinct_customers:
+      kind: entity_count
+      entity_key: customer_id
