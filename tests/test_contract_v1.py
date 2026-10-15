@@ -356,23 +356,17 @@ def test_export_selects_matching_packages_and_rejects_missing_models(monkeypatch
 
 def test_engine_metric_corpus_reaches_native_sqlmesh_graph(tmp_path) -> None:
     engine = pytest.importorskip("semantic_rails.contracts")
-    from mf2sr.translate import translate
-
     from sqlmesh_semantic_rails_contracts.cli import main
 
+    # Natively authored package for the engine corpus; the engine owns the
+    # corpus identity and expected metric IDs.
+    package_dir = ROOT / "integration_tests" / "portable_customers"
     corpus = engine.load_contract_fixture("metric_portability.v1.json")
-    source = tmp_path / "semantic_manifest.json"
-    source.write_text(json.dumps(corpus["framework_input"]))
-    imported = translate(source, tmp_path, package_id=corpus["package_id"], namespace=corpus["namespace"])
-    portable = engine.export_metric_portability(imported.package_dir, import_provenance=imported.provenance)
+    portable = engine.export_metric_portability(package_dir)
+    assert (portable["package"]["id"], portable["package"]["namespace"]) == (corpus["package_id"], corpus["namespace"])
     assert [row["id"] for row in portable["metrics"]] == corpus["expected_metric_ids"]
     output = tmp_path / "contract.yml"
-    assert (
-        main(
-            ["export", str(imported.package_dir), "--sqlmesh-model-prefix", "semantic_rails.", "--output", str(output)]
-        )
-        == 0
-    )
+    assert main(["export", str(package_dir), "--sqlmesh-model-prefix", "semantic_rails.", "--output", str(output)]) == 0
     bound = load_contract_file(output)
     assert bound["semantic"]["packages"][0]["semantic_hash"] == portable["package"]["semantic_hash"]
     report = check_project(project_dir=ROOT / "integration_tests/basic", contract=bound)

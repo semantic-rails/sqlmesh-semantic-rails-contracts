@@ -1,0 +1,11 @@
+model:
+  id: orders
+  relation: semantic_rails.orders
+  entities:
+    order: {}
+    customer:
+      expr:
+        kind: column
+        column: customer_id
+  dimensions: {}
+  measures: {}

@@ -1,11 +1,11 @@
 graph:
   entities:
     customer:
-      key: customer_id
+      key: [customer_id]
       model: customers
     order:
-      key: order_id
+      key: [order_id]
       model: orders
     revenue:
-      key: order_id
+      key: [order_id]
       model: revenue
